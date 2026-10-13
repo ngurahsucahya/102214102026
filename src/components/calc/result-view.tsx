@@ -117,9 +117,17 @@ export function ResultView({
           </div>
         </div>
 
-        <div className="grid grid-cols-1 gap-5 md:grid-cols-[minmax(0,16rem)_minmax(0,1fr)]">
+        <div className="grid grid-cols-1 gap-5 md:grid-cols-[minmax(0,24rem)_minmax(0,1fr)]">
           <div className="card p-3">
-            <DoorCanvas spec={spec} frame={frame} handle={handle} mode="view" className="mx-auto block h-72 w-full" />
+            <DoorCanvas
+              spec={spec}
+              frame={frame}
+              handle={handle}
+              mode="view"
+              detail
+              glass={result.glass.panels}
+              className="mx-auto block h-[30rem] w-full"
+            />
           </div>
 
           <div className="min-w-0 space-y-5">

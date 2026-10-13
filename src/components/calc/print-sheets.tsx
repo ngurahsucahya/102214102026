@@ -47,19 +47,21 @@ function dividerLines(spec: DoorSpec) {
 }
 
 /** Lembar untuk konsumen: gambar dan spesifikasi pintu saja, tanpa detail potong atau waste. */
-export function CustomerSheet({ spec, frame, handle, label }: SheetProps) {
+export function CustomerSheet({ spec, frame, handle, result, label }: SheetProps) {
   const dividers = dividerLines(spec);
   return (
     <article>
       <SheetHeader title="Rincian Pintu" label={label} />
-      <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)] gap-8">
-        <div className="rounded-lg border border-line p-3">
+      <div className="grid grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)] gap-6">
+        <div className="rounded-lg border border-line p-2">
           <DoorCanvas
             spec={spec}
             frame={frame}
             handle={handle}
             mode="view"
-            className="mx-auto block h-[110mm] w-full"
+            detail
+            glass={result.glass.panels}
+            className="mx-auto block h-[150mm] w-full"
           />
         </div>
         <table className="w-full self-start">
@@ -82,6 +84,9 @@ export function CustomerSheet({ spec, frame, handle, label }: SheetProps) {
                 {handle.name}
               </span>
             </SpecRow>
+            <SpecRow k="Tebal">
+              Frame {fmt(frame.faceWidth)} mm · gagang {fmt(handle.faceWidth)} mm
+            </SpecRow>
             <SpecRow k="Posisi gagang">
               Sisi {side(spec.handleSide)}, {fmt(spec.handleHeight)} mm dari bawah
             </SpecRow>
@@ -99,18 +104,18 @@ export function CustomerSheet({ spec, frame, handle, label }: SheetProps) {
           </tbody>
         </table>
       </div>
-      <p className="mt-4 text-xs text-muted">
-        Ukuran adalah ukuran luar pintu termasuk rangka. Semua ukuran dalam milimeter.
+      <p className="mt-3 text-xs text-muted">
+        Semua ukuran dalam milimeter. Ukuran luar pintu termasuk rangka; K1, K2, … adalah ukuran potong kaca.
       </p>
 
-      <div className="mt-16 grid grid-cols-2 gap-16 text-center text-sm">
+      <div className="mt-10 grid break-inside-avoid grid-cols-2 gap-16 text-center text-sm">
         <div>
           <div>Disetujui oleh,</div>
-          <div className="mt-20 border-t border-ink pt-1">Konsumen</div>
+          <div className="mt-16 border-t border-ink pt-1">Konsumen</div>
         </div>
         <div>
           <div>Hormat kami,</div>
-          <div className="mt-20 border-t border-ink pt-1">Pintu Custom</div>
+          <div className="mt-16 border-t border-ink pt-1">Pintu Custom</div>
         </div>
       </div>
     </article>
@@ -124,30 +129,46 @@ export function WorkshopSheet({ spec, frame, handle, result, label }: SheetProps
     <article>
       <SheetHeader title="Lembar Potong" label={label} />
 
-      <section className="mb-5 grid grid-cols-2 gap-6 text-sm">
-        <div>
-          <div className="font-semibold">Pintu</div>
-          <div>
-            Ukuran: {fmt(spec.width)} × {fmt(spec.height)} mm
-          </div>
-          <div>Frame: {frame.name}</div>
-          <div>
-            Gagang: {handle.name}, sisi {side(spec.handleSide)}, {fmt(spec.handleHeight)} mm dari bawah
-          </div>
-          <div>Divider: {dividers.length ? dividers.join("; ") : "tanpa divider"}</div>
+      <section className="mb-5 grid grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)] gap-6 text-sm">
+        <div className="rounded-lg border border-line p-2">
+          <DoorCanvas
+            spec={spec}
+            frame={frame}
+            handle={handle}
+            mode="view"
+            detail
+            glass={result.glass.panels}
+            className="mx-auto block h-[130mm] w-full"
+          />
         </div>
-        <div>
-          <div className="font-semibold">Ambil batang</div>
-          <ul>
-            {result.summary.map((s) => (
-              <li key={`${s.kind}${s.profileId}`}>
-                ☐ {s.newBars} × {s.profileName} ({fmt(s.barLength)} mm)
-              </li>
-            ))}
-          </ul>
-          <div className="mt-1 text-xs text-muted">
-            Total {result.stats.totalNewBars} batang · efisiensi {Math.round(result.stats.zeroWasteScore * 100)}% ·
-            waste {fmt(result.stats.scrap)} mm
+        <div className="space-y-4">
+          <div>
+            <div className="font-semibold">Pintu</div>
+            <div>
+              Ukuran: {fmt(spec.width)} × {fmt(spec.height)} mm
+            </div>
+            <div>
+              Frame: {frame.name} (tebal {fmt(frame.faceWidth)} mm)
+            </div>
+            <div>
+              Gagang: {handle.name} (tebal {fmt(handle.faceWidth)} mm), sisi {side(spec.handleSide)},{" "}
+              {fmt(spec.handleHeight)} mm dari bawah
+            </div>
+            <div>Divider: {dividers.length ? dividers.join("; ") : "tanpa divider"}</div>
+          </div>
+          <div>
+            <div className="font-semibold">Ambil batang</div>
+            <ul>
+              {result.summary.map((s) => (
+                <li key={`${s.kind}${s.profileId}`}>
+                  ☐ {s.newBars} × {s.profileName} ({fmt(s.barLength)} mm)
+                </li>
+              ))}
+            </ul>
+            <div className="mt-1 text-xs text-muted">
+              Total {result.stats.totalNewBars} batang · efisiensi {Math.round(result.stats.zeroWasteScore * 100)}% ·
+              waste {fmt(result.stats.scrap)} mm
+            </div>
           </div>
         </div>
       </section>

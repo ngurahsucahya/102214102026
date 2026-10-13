@@ -2,7 +2,8 @@
 
 import { useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { clampToRanges, doorGeometry } from "@/lib/engine";
-import type { DoorSpec, FrameProfile, HandleProfile, Segment } from "@/lib/engine/types";
+import type { DoorSpec, FrameProfile, GlassPanel, HandleProfile, Segment } from "@/lib/engine/types";
+import { detailPadding, DoorDimensions } from "./door-dimensions";
 
 export type CanvasMode = "view" | "divider" | "handle";
 export type DividerRef = { axis: "h" | "v"; index: number };
@@ -16,6 +17,9 @@ type Props = {
   selected?: DividerRef | null;
   onSelect?: (ref: DividerRef | null) => void;
   onChange?: (patch: Partial<DoorSpec>) => void;
+  /** Gambar kerja: semua ukuran (tebal frame, bukaan, divider, kaca, gagang). */
+  detail?: boolean;
+  glass?: GlassPanel[];
   className?: string;
 };
 
@@ -30,6 +34,8 @@ export function DoorCanvas({
   selected,
   onSelect,
   onChange,
+  detail = false,
+  glass,
   className,
 }: Props) {
   const svgRef = useRef<SVGSVGElement>(null);
@@ -41,7 +47,11 @@ export function DoorCanvas({
   const wF = g.frameWidth;
   const big = Math.max(W, H);
   const pad = big * 0.14;
-  const font = big * 0.034;
+  const font = big * (detail ? 0.026 : 0.034);
+  const dp = detailPadding(spec, font);
+  const viewBox = detail
+    ? `${-dp.left} ${-dp.top} ${W + dp.left + dp.right} ${H + dp.top + dp.bottom}`
+    : `${-pad} ${-pad * 0.5} ${W + pad * 2} ${H + pad * 1.4}`;
   const y = (fromBottom: number) => H - fromBottom;
   const handleX = spec.handleSide === "left" ? 0 : W - g.rightWidth;
   const handleW = spec.handleSide === "left" ? g.leftWidth : g.rightWidth;
@@ -89,7 +99,7 @@ export function DoorCanvas({
   return (
     <svg
       ref={svgRef}
-      viewBox={`${-pad} ${-pad * 0.5} ${W + pad * 2} ${H + pad * 1.4}`}
+      viewBox={viewBox}
       className={`touch-none select-none ${className ?? ""}`}
       onPointerMove={onMove}
       onPointerUp={() => setDrag(null)}
@@ -107,7 +117,7 @@ export function DoorCanvas({
       </defs>
 
       {/* lantai */}
-      <line x1={-pad} x2={W + pad} y1={H} y2={H} stroke="#d1d5db" strokeWidth={big * 0.006} />
+      {!detail && <line x1={-pad} x2={W + pad} y1={H} y2={H} stroke="#d1d5db" strokeWidth={big * 0.006} />}
 
       {/* kaca */}
       <rect x={g.inner.left} y={wF} width={g.inner.right - g.inner.left} height={H - 2 * wF} fill="url(#glass)" />
@@ -285,26 +295,30 @@ export function DoorCanvas({
         </g>
       )}
 
+      {detail && <DoorDimensions spec={spec} g={g} glass={glass} font={font} stroke={big * 0.0016} />}
+
       {/* ukuran */}
-      <g fill="#6b7280" fontSize={font} fontWeight="600">
-        <line x1={0} x2={W} y1={H + pad * 0.4} y2={H + pad * 0.4} stroke="#6b7280" strokeWidth={big * 0.003} />
-        <line x1={0} x2={0} y1={H + pad * 0.3} y2={H + pad * 0.5} stroke="#6b7280" strokeWidth={big * 0.003} />
-        <line x1={W} x2={W} y1={H + pad * 0.3} y2={H + pad * 0.5} stroke="#6b7280" strokeWidth={big * 0.003} />
-        <text x={W / 2} y={H + pad * 0.4 + font * 1.3} textAnchor="middle">
-          {W} mm
-        </text>
-        <line x1={-pad * 0.4} x2={-pad * 0.4} y1={0} y2={H} stroke="#6b7280" strokeWidth={big * 0.003} />
-        <line x1={-pad * 0.5} x2={-pad * 0.3} y1={0} y2={0} stroke="#6b7280" strokeWidth={big * 0.003} />
-        <line x1={-pad * 0.5} x2={-pad * 0.3} y1={H} y2={H} stroke="#6b7280" strokeWidth={big * 0.003} />
-        <text
-          x={-pad * 0.4 - font * 0.6}
-          y={H / 2}
-          textAnchor="middle"
-          transform={`rotate(-90 ${-pad * 0.4 - font * 0.6} ${H / 2})`}
-        >
-          {H} mm
-        </text>
-      </g>
+      {!detail && (
+        <g fill="#6b7280" fontSize={font} fontWeight="600">
+          <line x1={0} x2={W} y1={H + pad * 0.4} y2={H + pad * 0.4} stroke="#6b7280" strokeWidth={big * 0.003} />
+          <line x1={0} x2={0} y1={H + pad * 0.3} y2={H + pad * 0.5} stroke="#6b7280" strokeWidth={big * 0.003} />
+          <line x1={W} x2={W} y1={H + pad * 0.3} y2={H + pad * 0.5} stroke="#6b7280" strokeWidth={big * 0.003} />
+          <text x={W / 2} y={H + pad * 0.4 + font * 1.3} textAnchor="middle">
+            {W} mm
+          </text>
+          <line x1={-pad * 0.4} x2={-pad * 0.4} y1={0} y2={H} stroke="#6b7280" strokeWidth={big * 0.003} />
+          <line x1={-pad * 0.5} x2={-pad * 0.3} y1={0} y2={0} stroke="#6b7280" strokeWidth={big * 0.003} />
+          <line x1={-pad * 0.5} x2={-pad * 0.3} y1={H} y2={H} stroke="#6b7280" strokeWidth={big * 0.003} />
+          <text
+            x={-pad * 0.4 - font * 0.6}
+            y={H / 2}
+            textAnchor="middle"
+            transform={`rotate(-90 ${-pad * 0.4 - font * 0.6} ${H / 2})`}
+          >
+            {H} mm
+          </text>
+        </g>
+      )}
     </svg>
   );
 }
