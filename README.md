@@ -1,36 +1,40 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Pintu Custom
 
-## Getting Started
+Web untuk usaha pintu custom: admin mengatur master batang (frame dan gagang), tim lapangan menghitung kebutuhan batang dan menyiapkan rincian untuk penawaran ke konsumen.
 
-First, run the development server:
+## Menjalankan di lokal
+
+Butuh Node.js 24+ dan Docker.
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
+cp .env.example .env        # isi SESSION_SECRET dengan string acak panjang
+docker compose up -d        # PostgreSQL di port 5433
+npm run db:push             # buat tabel
+npm run db:seed             # data contoh + akun awal
+npm run dev                 # http://localhost:3000
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Akun awal: `admin` / `admin123` dan `lapangan` / `lapangan123`. Segera ganti password-nya di menu **Pengguna**.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Perintah lain
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+| Perintah | Fungsi |
+|---|---|
+| `npm test` | Unit test engine hitung |
+| `npm run db:studio` | Lihat isi database |
+| `npm run build` | Build produksi |
 
-## Learn More
+## Cara hitung
 
-To learn more about Next.js, take a look at the following resources:
+Kode engine ada di `src/lib/engine`. Engine ini TypeScript murni, dipakai di browser untuk hitung live dan di server saat menyimpan.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+1. **Uraikan pintu** (`decompose.ts`): frame atas/bawah/kiri/kanan dipotong 45°. Satu sisi vertikal adalah frame gagang. Divider vertikal penuh setinggi bidang dalam, sedangkan divider horizontal terpotong di antara divider vertikal (potongan 90°).
+2. **Frame gagang** (`handle.ts`): dipotong dari batang gagang sehingga zona gagang jatuh tepat di tinggi pilihan. Potongan boleh dibalik dan tidak boleh ikut memotong zona gagang lain. Rentang tinggi yang mungkin dihitung untuk membatasi slider.
+3. **Optimasi potong** (`pack.ts`): exact search (branch & bound) untuk jumlah batang baru paling sedikit. Sisa batang gagang (tanpa zona gagang) dipakai dulu jika admin mengizinkan. Kalau jumlah batangnya sama, dipilih susunan dengan sisa yang paling terkumpul.
+4. **Kerf** dihitung per potongan, dengan potongan 45° dikali √2. Ujung batang bisa dibuang (end trim). Sisa di bawah batas minimum dianggap buangan.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+5. **Kaca** (`accessories.ts`): bukaan = ukuran pintu dikurangi tebal frame, tebal gagang, dan tebal divider. Ukuran potong kaca = bukaan + 2 × "kaca masuk alur" (pengaturan admin).
+6. **Skrup** (`accessories.ts`): tiap batang punya kelompok skrup (jenis + jumlah per sudut frame, jenis + jumlah per ujung divider). 2 sudut di sisi gagang memakai kelompok batang gagang (kalau kosong ikut frame). 2 sudut lain dan semua ujung divider memakai kelompok frame. Hasilnya dijumlahkan per jenis skrup.
 
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Efisiensi material = 1 − waste / total panjang batang. Sisa yang masih berguna tidak dihitung sebagai waste.
