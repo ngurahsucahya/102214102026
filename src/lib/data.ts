@@ -79,6 +79,8 @@ export async function getCalcCatalog({ includeInactive = false } = {}): Promise<
         zones: h.zones,
         remainderFrameProfileId: h.remainderFrameProfileId,
       })),
-    hingeTypes: hinges.filter((h) => includeInactive || h.active).map((h) => ({ id: h.id, name: h.name, length: h.length })),
+    hingeTypes: hinges
+      .filter((h) => includeInactive || h.active)
+      .map((h) => ({ id: h.id, name: h.name, length: h.length })),
   };
 }

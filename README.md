@@ -15,7 +15,9 @@ npm run db:seed             # data contoh + akun awal
 npm run dev                 # http://localhost:3000
 ```
 
-Akun awal: `admin` / `admin123` dan `lapangan` / `lapangan123`. Segera ganti password-nya di menu **Pengguna**.
+**Login sementara dinonaktifkan** (`LOGIN_ENABLED=false` di `.env`). Halaman awal berisi pilihan **Admin** atau **Petugas lapangan**, dan pengguna langsung masuk sebagai akun aktif pertama dengan peran itu. Pembatasan per peran tetap berlaku: petugas lapangan tidak bisa membuka halaman admin.
+
+Untuk menyalakan login lagi, isi `LOGIN_ENABLED=true` lalu restart server. Akun awal: `admin` / `admin123` dan `lapangan` / `lapangan123`. Segera ganti password-nya di menu **Pengguna**.
 
 ## Perintah lain
 

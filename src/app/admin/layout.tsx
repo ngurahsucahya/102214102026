@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 import { DoorMark } from "@/components/door-mark";
 import { getCurrentUser } from "@/lib/auth";
+import { LOGIN_ENABLED } from "@/lib/auth-mode";
 import { logout } from "../login/actions";
 import { AdminNav, NavLinks } from "./nav";
 
@@ -38,7 +39,7 @@ async function UserBadge() {
         <div className="truncate text-sm font-semibold">{user.name}</div>
         <div className="text-xs text-muted">@{user.username}</div>
       </div>
-      <button className="btn px-2.5 py-1.5 text-xs">Keluar</button>
+      <button className="btn px-2.5 py-1.5 text-xs">{LOGIN_ENABLED ? "Keluar" : "Ganti peran"}</button>
     </form>
   );
 }

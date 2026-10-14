@@ -5,6 +5,7 @@ import { DoorMark } from "@/components/door-mark";
 import { BulkLink } from "@/components/calc/bulk-link";
 import { UnitToggle } from "@/components/unit-context";
 import { getCurrentUser } from "@/lib/auth";
+import { LOGIN_ENABLED } from "@/lib/auth-mode";
 import { logout } from "../login/actions";
 
 export default function FieldLayout({ children }: LayoutProps<"/lapangan">) {
@@ -27,9 +28,9 @@ export default function FieldLayout({ children }: LayoutProps<"/lapangan">) {
               <span className="hidden sm:inline">Riwayat</span>
             </Link>
             <form action={logout}>
-              <button className="btn border-transparent px-2.5" aria-label="Keluar">
+              <button className="btn border-transparent px-2.5" aria-label={LOGIN_ENABLED ? "Keluar" : "Ganti peran"}>
                 <LogOut className="size-4" />
-                <span className="hidden sm:inline">Keluar</span>
+                <span className="hidden sm:inline">{LOGIN_ENABLED ? "Keluar" : "Ganti peran"}</span>
               </button>
             </form>
           </nav>

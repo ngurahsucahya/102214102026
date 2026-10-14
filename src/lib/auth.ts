@@ -4,6 +4,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { cache } from "react";
 import { db, schema } from "@/db";
+import { ENTRY_PATH } from "./auth-mode";
 import { decryptSession, SESSION_COOKIE, type Role } from "./session";
 
 /** User yang sedang login, dicek ulang ke database (bukan hanya dari cookie). */
@@ -17,7 +18,7 @@ export const getCurrentUser = cache(async () => {
 
 export async function requireUser(role?: Role) {
   const user = await getCurrentUser();
-  if (!user) redirect("/login");
+  if (!user) redirect(ENTRY_PATH);
   if (role && user.role !== role) redirect(user.role === "admin" ? "/admin" : "/lapangan");
   return user;
 }
