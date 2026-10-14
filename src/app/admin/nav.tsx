@@ -1,6 +1,6 @@
 "use client";
 
-import { Gauge, Grip, PanelsTopLeft, Settings, Users, Wrench } from "lucide-react";
+import { DoorOpen, Gauge, Grip, PanelsTopLeft, Settings, Users, Wrench } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
@@ -9,6 +9,7 @@ const items = [
   { href: "/admin/frame", label: "Batang Frame", icon: PanelsTopLeft },
   { href: "/admin/gagang", label: "Batang Gagang", icon: Grip },
   { href: "/admin/skrup", label: "Kelompok Skrup", icon: Wrench },
+  { href: "/admin/engsel", label: "Engsel", icon: DoorOpen },
   { href: "/admin/pengaturan", label: "Pengaturan", icon: Settings },
   { href: "/admin/pengguna", label: "Pengguna", icon: Users },
 ] as const;

@@ -1,7 +1,16 @@
 import { describe, expect, it } from "vitest";
-import { calculate, CalcError, decomposeDoor, feasibleHandleRanges, type DoorSpec } from "./index";
+import {
+  calculate,
+  calculateBulk,
+  CalcError,
+  decomposeDoor,
+  distributeHinges,
+  feasibleHandleRanges,
+  screwJoints,
+  type DoorSpec,
+} from "./index";
 import { packItems } from "./pack";
-import type { CalcSettings, FrameProfile, HandleProfile, ScrewGroup } from "./types";
+import type { CalcSettings, FrameProfile, HandleProfile, HingeType, ScrewGroup } from "./types";
 
 const settings: CalcSettings = { kerf: 4, endTrim: 0, minUsableOffcut: 300, glassInset: 0 };
 const screws: ScrewGroup = {
@@ -32,12 +41,16 @@ const handle: HandleProfile = {
 };
 
 const door = (over: Partial<DoorSpec> = {}): DoorSpec => ({
+  doorType: "slider",
+  hingeTypeId: null,
+  hinges: [],
   width: 800,
   height: 2100,
   frameProfileId: 1,
   handleProfileId: 10,
   handleSide: "right",
-  handleHeight: 1000,
+  // Ujung bawah gagang 900 = titik tengah 1000 untuk zona 200 mm.
+  handleHeight: 900,
   hDividers: [],
   vDividers: [],
   ...over,
@@ -64,11 +77,13 @@ describe("decomposeDoor", () => {
 });
 
 describe("feasibleHandleRanges", () => {
-  it("membatasi tinggi gagang sesuai posisi zona di batang", () => {
+  it("membatasi tinggi ujung bawah gagang sesuai posisi zona di batang", () => {
     const ranges = feasibleHandleRanges(handle, settings, 2100, 40);
-    // Normal: start = 1400 - h >= 0 dan 1400 - h + 2100 <= 3000  →  h ∈ [500, 1400]
-    // Dibalik: start = 1400 - (2100 - h) >= 0 dan ≤ 900          →  h ∈ [700, 1600]
-    expect(ranges).toEqual([{ start: 500, length: 1100 }]);
+    // Zona 1300–1500 (tengah 1400). Titik tengah gagang c = h + 100.
+    // Normal: start = 1400 - c ∈ [0, 900]          →  c ∈ [500, 1400]
+    // Dibalik: start = 1400 - (2100 - c) ∈ [0, 900] →  c ∈ [700, 1600]
+    // Jadi c ∈ [500, 1600], ujung bawah h ∈ [400, 1500]
+    expect(ranges).toEqual([{ start: 400, length: 1100 }]);
   });
 });
 
@@ -115,7 +130,7 @@ describe("calculate", () => {
   });
 
   it("memberi petunjuk tinggi gagang yang valid", () => {
-    expect(() => calculate(door({ handleHeight: 300 }), [frame], [handle], settings)).toThrowError(/500–1600 mm/);
+    expect(() => calculate(door({ handleHeight: 300 }), [frame], [handle], settings)).toThrowError(/400–1500 mm/);
   });
 
   it("menolak divider yang keluar dari pintu", () => {
@@ -197,5 +212,119 @@ describe("skrup", () => {
   it("kosong jika batang belum punya kelompok skrup", () => {
     const r = calculate(door(), [{ ...frame, screwGroup: null }], [handle], settings);
     expect(r.screws).toEqual([]);
+  });
+});
+
+describe("tipe pintu dan engsel", () => {
+  const hingeTypes: HingeType[] = [{ id: 7, name: 'Engsel 4"', length: 100 }];
+  const swing = (over: Partial<DoorSpec> = {}) =>
+    door({ doorType: "swing", hingeTypeId: 7, hinges: distributeHinges(3, 2100, 100), ...over });
+
+  it("engsel dibagi rata, ujung engsel 200 mm dari bawah dan atas", () => {
+    // Engsel 100 mm: ujung bawah di 200, 1000, 1800 → titik tengah 250, 1050, 1850
+    expect(distributeHinges(3, 2100, 100)).toEqual([250, 1050, 1850]);
+    expect(distributeHinges(2, 2100, 100)).toEqual([250, 1850]);
+    expect(distributeHinges(1, 2100, 100)).toEqual([1050]);
+  });
+
+  it("swing: engsel di seberang gagang", () => {
+    const r = calculate(swing(), [frame], [handle], settings, hingeTypes);
+    expect(r.hinges).toEqual({
+      typeId: 7,
+      name: 'Engsel 4"',
+      length: 100,
+      side: "left",
+      positions: [250, 1050, 1850],
+    });
+  });
+
+  it("swing wajib jenis engsel dan tidak boleh gagang di kedua sisi", () => {
+    expect(() => calculate(swing({ hingeTypeId: null }), [frame], [handle], settings, hingeTypes)).toThrowError(
+      /Pilih jenis engsel/,
+    );
+    expect(() => calculate(swing({ handleSide: "both" }), [frame], [handle], settings, hingeTypes)).toThrowError(
+      /hanya bisa satu sisi/,
+    );
+    expect(() => calculate(swing({ hinges: [500, 550] }), [frame], [handle], settings, hingeTypes)).toThrowError(
+      /bertumpuk/,
+    );
+  });
+
+  it("slider tanpa engsel", () => {
+    const r = calculate(door({ hinges: [200] }), [frame], [handle], settings, hingeTypes);
+    expect(r.hinges).toBeNull();
+  });
+
+  it("slider gagang di kedua sisi memakai 2 frame gagang", () => {
+    const r = calculate(door({ handleSide: "both" }), [frame], [handle], settings);
+    const handlePieces = r.pieces.filter((p) => p.stock.kind === "handle");
+    expect(handlePieces.map((p) => p.id)).toEqual(["left", "right"]);
+    expect(r.summary.find((s) => s.kind === "handle")!.newBars).toBe(2);
+    // Bukaan kaca dikurangi tebal gagang di kedua sisi: 800 - 45 - 45
+    expect(r.glass.panels[0].openingWidth).toBe(710);
+  });
+});
+
+describe("titik skrup", () => {
+  it("jumlah per titik sama dengan total skrup per jenis", () => {
+    for (const spec of [door(), door({ hDividers: [700, 1400], vDividers: [400] }), door({ handleSide: "both" })]) {
+      const r = calculate(spec, [frame], [handle], settings);
+      const totals = new Map<string, number>();
+      for (const j of screwJoints(spec, frame, handle)) totals.set(j.type, (totals.get(j.type) ?? 0) + j.qty);
+      expect(Object.fromEntries(totals)).toEqual(Object.fromEntries(r.screws.map((l) => [l.type, l.qty])));
+    }
+  });
+});
+
+describe("bulk", () => {
+  it("sisa batang satu pintu dipakai pintu lain", () => {
+    const one = calculate(door(), [frame], [handle], settings);
+    expect(one.stats.totalNewBars).toBe(3);
+
+    // 2 unit pintu yang sama: terpisah 6 batang, bersama 5 (frame atas/bawah berbagi batang).
+    const bulk = calculateBulk([{ spec: door(), qty: 2, label: "Kamar" }], [frame], [handle], settings);
+    expect(bulk.separateBars).toBe(6);
+    expect(bulk.stats.totalNewBars).toBe(5);
+    expect(bulk.summary.map((s) => [s.kind, s.newBars])).toEqual([
+      ["handle", 2],
+      ["frame", 3],
+    ]);
+  });
+
+  it("menggabungkan pintu berbeda dan semua potongan tercatat sekali", () => {
+    const items = [
+      { spec: door(), qty: 1, label: "A" },
+      { spec: door({ width: 700, hDividers: [1000] }), qty: 2, label: "B" },
+    ];
+    const bulk = calculateBulk(items, [frame], [handle], settings);
+    const cutIds = bulk.bars.flatMap((b) => b.cuts.map((c) => c.pieceId)).sort();
+    const expected = bulk.doors
+      .flatMap((d) =>
+        Array.from({ length: d.qty }, (_, k) => d.single.pieces.map((p) => `${d.code}-${k + 1}:${p.id}`)).flat(),
+      )
+      .sort();
+    expect(cutIds).toEqual(expected);
+    expect(bulk.bars.flatMap((b) => b.cuts).find((c) => c.pieceId === "P2-2:top")!.label).toBe("P2 (2/2) · Frame atas");
+    expect(bulk.stats.totalNewBars).toBeLessThanOrEqual(bulk.separateBars);
+  });
+
+  it("menjumlahkan skrup per unit", () => {
+    const bulk = calculateBulk([{ spec: door(), qty: 3, label: "" }], [frame], [handle], settings);
+    // 1 pintu: 4 sudut × 4 skrup
+    expect(bulk.screws).toEqual([{ type: "Skrup 8x1", qty: 48, detail: ["P1: 16 × 3"] }]);
+  });
+
+  it("error menyebut pintu yang bermasalah", () => {
+    expect(() =>
+      calculateBulk(
+        [
+          { spec: door(), qty: 1, label: "" },
+          { spec: door({ handleHeight: 50 }), qty: 1, label: "" },
+        ],
+        [frame],
+        [handle],
+        settings,
+      ),
+    ).toThrowError(/^P2: Tinggi gagang yang bisa/);
   });
 });

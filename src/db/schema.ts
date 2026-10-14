@@ -10,7 +10,15 @@ import {
   timestamp,
   type AnyPgColumn,
 } from "drizzle-orm/pg-core";
-import type { CalcResult, DoorSpec, HandleZone } from "@/lib/engine/types";
+import type {
+  BulkItem,
+  BulkResult,
+  CalcResult,
+  DoorSpec,
+  FrameProfile,
+  HandleProfile,
+  HandleZone,
+} from "@/lib/engine/types";
 
 export const roleEnum = pgEnum("role", ["admin", "field"]);
 
@@ -45,6 +53,16 @@ export const screwGroups = pgTable("screw_groups", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+/** Jenis engsel untuk pintu swing. */
+export const hingeTypes = pgTable("hinge_types", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  /** Tinggi daun engsel (mm). */
+  length: integer("length").notNull().default(100),
+  active: boolean("active").notNull().default(true),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 export const frameProfiles = pgTable("frame_profiles", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
@@ -67,10 +85,9 @@ export const handleProfiles = pgTable("handle_profiles", {
   faceWidth: integer("face_width").notNull().default(45),
   screwGroupId: integer("screw_group_id").references(() => screwGroups.id, { onDelete: "set null" }),
   zones: jsonb("zones").$type<HandleZone[]>().notNull().default([]),
-  remainderFrameProfileId: integer("remainder_frame_profile_id").references(
-    (): AnyPgColumn => frameProfiles.id,
-    { onDelete: "set null" },
-  ),
+  remainderFrameProfileId: integer("remainder_frame_profile_id").references((): AnyPgColumn => frameProfiles.id, {
+    onDelete: "set null",
+  }),
   active: boolean("active").notNull().default(true),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
@@ -83,7 +100,27 @@ export const calculations = pgTable("calculations", {
   label: text("label"),
   spec: jsonb("spec").$type<DoorSpec>().notNull(),
   result: jsonb("result").$type<CalcResult>().notNull(),
+  /** Salinan profil saat dihitung, supaya gambar riwayat tidak berubah kalau master diubah. */
+  frame: jsonb("frame").$type<FrameProfile>(),
+  handle: jsonb("handle").$type<HandleProfile>(),
   totalBars: integer("total_bars").notNull(),
+  score: real("score").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** Beberapa pintu yang dihitung bersama dalam satu pembelian (bulk). */
+export const bulkCalculations = pgTable("bulk_calculations", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  label: text("label"),
+  items: jsonb("items").$type<BulkItem[]>().notNull(),
+  result: jsonb("result").$type<BulkResult>().notNull(),
+  /** Salinan profil yang dipakai, supaya gambar riwayat tidak berubah kalau master diubah. */
+  profiles: jsonb("profiles").$type<{ frames: FrameProfile[]; handles: HandleProfile[] }>(),
+  totalBars: integer("total_bars").notNull(),
+  separateBars: integer("separate_bars").notNull(),
   score: real("score").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });

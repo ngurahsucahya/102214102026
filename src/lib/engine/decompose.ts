@@ -1,4 +1,5 @@
-import type { DoorSpec, FrameProfile, HandleProfile, Piece, ValidationIssue } from "./types";
+import { handleSides, hingeSide } from "./sides";
+import type { DoorSpec, FrameProfile, HandleProfile, HingeType, Piece, ValidationIssue } from "./types";
 
 export type DoorGeometry = {
   leftWidth: number;
@@ -8,8 +9,9 @@ export type DoorGeometry = {
 };
 
 export function doorGeometry(spec: DoorSpec, frame: FrameProfile, handle: HandleProfile): DoorGeometry {
-  const leftWidth = spec.handleSide === "left" ? handle.faceWidth : frame.faceWidth;
-  const rightWidth = spec.handleSide === "right" ? handle.faceWidth : frame.faceWidth;
+  const sides = handleSides(spec);
+  const leftWidth = sides.includes("left") ? handle.faceWidth : frame.faceWidth;
+  const rightWidth = sides.includes("right") ? handle.faceWidth : frame.faceWidth;
   return {
     leftWidth,
     rightWidth,
@@ -82,6 +84,30 @@ export function validateDoor(spec: DoorSpec, frame: FrameProfile, handle: Handle
     ...checkDividers(spec.vDividers, g.inner.left, g.inner.right, frame.faceWidth, "vDividers", "Divider vertikal"),
     ...checkDividers(spec.hDividers, g.inner.bottom, g.inner.top, frame.faceWidth, "hDividers", "Divider horizontal"),
   );
+  if (spec.doorType === "swing" && spec.handleSide === "both") {
+    issues.push({ field: "handleSide", message: "Pintu swing hanya bisa satu sisi gagang (kiri atau kanan)" });
+  }
+  return issues;
+}
+
+/** Engsel harus utuh di dalam tinggi pintu dan tidak saling bertumpuk. */
+export function validateHinges(spec: DoorSpec, hingeTypes: HingeType[]): ValidationIssue[] {
+  if (!hingeSide(spec)) return [];
+  const type = hingeTypes.find((t) => t.id === spec.hingeTypeId);
+  if (!type) return [{ field: "hingeTypeId", message: "Pilih jenis engsel" }];
+  if (spec.hinges.length < 1) return [{ field: "hinges", message: "Minimal 1 engsel" }];
+
+  const issues: ValidationIssue[] = [];
+  const half = type.length / 2;
+  const sorted = [...spec.hinges].sort((a, b) => a - b);
+  sorted.forEach((p, i) => {
+    if (p - half < 0 || p + half > spec.height) {
+      issues.push({ field: "hinges", message: `Engsel di ${p} mm keluar dari tinggi pintu` });
+    }
+    if (i > 0 && p - sorted[i - 1] < type.length) {
+      issues.push({ field: "hinges", message: `Engsel di ${sorted[i - 1]} mm dan ${p} mm bertumpuk` });
+    }
+  });
   return issues;
 }
 
@@ -92,26 +118,24 @@ export function decomposeDoor(spec: DoorSpec, frame: FrameProfile, handle: Handl
   const handleStock = { kind: "handle" as const, profileId: handle.id };
 
   const sideLabel = (side: "left" | "right") => (side === "left" ? "kiri" : "kanan");
-  const plainSide = spec.handleSide === "left" ? "right" : "left";
+  const withHandle = handleSides(spec);
 
   const pieces: Piece[] = [
     { id: "top", label: "Frame atas", length: spec.width, angle: "miter", stock: frameStock },
     { id: "bottom", label: "Frame bawah", length: spec.width, angle: "miter", stock: frameStock },
-    {
-      id: plainSide,
-      label: `Frame ${sideLabel(plainSide)}`,
-      length: spec.height,
-      angle: "miter",
-      stock: frameStock,
-    },
-    {
-      id: spec.handleSide,
-      label: `Frame ${sideLabel(spec.handleSide)} (gagang)`,
-      length: spec.height,
-      angle: "miter",
-      stock: handleStock,
-      handleOffset: spec.handleHeight,
-    },
+    ...(["left", "right"] as const).map((side): Piece =>
+      withHandle.includes(side)
+        ? {
+            id: side,
+            label: `Frame ${sideLabel(side)} (gagang)`,
+            length: spec.height,
+            angle: "miter",
+            stock: handleStock,
+            handleOffset: spec.handleHeight,
+            handleFrameWidth: frame.faceWidth,
+          }
+        : { id: side, label: `Frame ${sideLabel(side)}`, length: spec.height, angle: "miter", stock: frameStock },
+    ),
   ];
 
   const vSorted = [...spec.vDividers].sort((a, b) => a - b);

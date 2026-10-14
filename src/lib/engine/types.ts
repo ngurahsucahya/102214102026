@@ -53,20 +53,34 @@ export type HandleProfile = {
   remainderFrameProfileId: number | null;
 };
 
-export type HandleSide = "left" | "right";
+export type Side = "left" | "right";
+/** "both" hanya untuk slider: kedua frame vertikal memakai batang gagang. */
+export type HandleSide = Side | "both";
+export type DoorType = "swing" | "slider";
+
+export type HingeType = {
+  id: number;
+  name: string;
+  /** Tinggi daun engsel, untuk gambar dan validasi posisi. */
+  length: number;
+};
 
 export type DoorSpec = {
+  doorType: DoorType;
   width: number;
   height: number;
   frameProfileId: number;
   handleProfileId: number;
   handleSide: HandleSide;
-  /** Tinggi titik tengah gagang dari bawah pintu. */
+  /** Tinggi ujung bawah gagang dari bawah pintu (lantai). */
   handleHeight: number;
   /** Titik tengah divider horizontal, diukur dari bawah pintu. */
   hDividers: number[];
   /** Titik tengah divider vertikal, diukur dari kiri pintu. */
   vDividers: number[];
+  /** Khusus swing: jenis engsel dan titik tengah tiap engsel dari bawah pintu. */
+  hingeTypeId: number | null;
+  hinges: number[];
 };
 
 export type CutAngle = "miter" | "straight";
@@ -77,8 +91,12 @@ export type Piece = {
   length: number;
   angle: CutAngle;
   stock: { kind: "frame" | "handle"; profileId: number };
-  /** Khusus frame gagang: jarak titik tengah gagang dari ujung bawah potongan. */
+  /** Khusus frame gagang: jarak ujung bawah gagang dari ujung bawah potongan. */
   handleOffset?: number;
+  /** Khusus frame gagang: tebal frame atas/bawah, zona gagang harus di antaranya. */
+  handleFrameWidth?: number;
+  /** Bulk: nama pintu asal potongan, mis. "P2". */
+  door?: string;
 };
 
 export type PlacedCut = {
@@ -140,6 +158,8 @@ export type CalcResult = {
   bars: BarPlan[];
   summary: ProfileSummary[];
   glass: { panels: GlassPanel[]; totalArea: number };
+  /** null untuk slider. */
+  hinges: { typeId: number; name: string; length: number; side: Side; positions: number[] } | null;
   screws: ScrewLine[];
   stats: {
     totalNewBars: number;
@@ -153,6 +173,27 @@ export type CalcResult = {
     zeroWasteScore: number;
     optimal: boolean;
   };
+};
+
+/** Satu jenis pintu di dalam bulk, bisa lebih dari 1 unit. */
+export type BulkItem = { spec: DoorSpec; qty: number; label: string };
+
+export type BulkDoor = {
+  /** Kode pintu di bulk: P1, P2, ... */
+  code: string;
+  label: string;
+  spec: DoorSpec;
+  qty: number;
+  /** Hasil kalau pintu ini dihitung sendiri (untuk 1 unit). */
+  single: CalcResult;
+};
+
+export type BulkResult = Pick<CalcResult, "bars" | "summary" | "stats"> & {
+  doors: BulkDoor[];
+  /** Total batang kalau setiap unit pintu dihitung terpisah. */
+  separateBars: number;
+  screws: ScrewLine[];
+  hinges: { name: string; qty: number }[];
 };
 
 export type ValidationIssue = { field: string; message: string };

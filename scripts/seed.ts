@@ -72,6 +72,14 @@ async function main() {
       .where(isNull(schema.handleProfiles.screwGroupId));
   }
 
+  const hinges = await db.select().from(schema.hingeTypes).limit(1);
+  if (!hinges.length) {
+    await db.insert(schema.hingeTypes).values([
+      { name: 'Engsel 4" Stainless', length: 100 },
+      { name: 'Engsel 5" Heavy Duty', length: 125 },
+    ]);
+  }
+
   console.log("Seed selesai. Login: admin/admin123 dan lapangan/lapangan123");
   process.exit(0);
 }

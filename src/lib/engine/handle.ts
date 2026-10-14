@@ -12,7 +12,7 @@ const zoneCenter = (z: HandleZone) => z.start + z.length / 2;
 
 /**
  * Semua cara memotong frame gagang sepanjang `length` dari satu batang gagang
- * sehingga titik tengah zona gagang jatuh di `offset` mm dari ujung bawah potongan.
+ * sehingga ujung bawah zona gagang jatuh di `offset` mm dari ujung bawah potongan.
  * Zona gagang harus utuh di dalam potongan, tidak menabrak frame atas/bawah,
  * dan tidak boleh ada zona gagang lain yang ikut terpotong.
  */
@@ -28,12 +28,13 @@ export function handlePlacements(
   const result: HandlePlacement[] = [];
 
   handle.zones.forEach((zone, zoneIndex) => {
-    const halfZone = zone.length / 2;
-    if (offset - halfZone < frameWidth || offset + halfZone > length - frameWidth) return;
+    // `offset` = ujung bawah zona gagang dari bawah potongan; zona harus utuh di antara frame atas & bawah.
+    if (offset < frameWidth || offset + zone.length > length - frameWidth) return;
     const c = zoneCenter(zone);
+    const centerOffset = offset + zone.length / 2;
 
     for (const flipped of [false, true]) {
-      const start = flipped ? c - (length - offset) : c - offset;
+      const start = flipped ? c - (length - centerOffset) : c - centerOffset;
       const end = start + length;
       if (start < a - 1e-6 || end > b + 1e-6) continue;
       const hitsOther = handle.zones.some((z, i) => i !== zoneIndex && z.start < end && z.start + z.length > start);
@@ -45,7 +46,7 @@ export function handlePlacements(
   return result;
 }
 
-/** Rentang tinggi gagang (dari bawah pintu) yang bisa dibuat dari batang ini. */
+/** Rentang tinggi ujung bawah gagang (dari bawah pintu) yang bisa dibuat dari batang ini. */
 export function feasibleHandleRanges(
   handle: HandleProfile,
   settings: CalcSettings,

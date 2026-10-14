@@ -1,4 +1,5 @@
 import { doorGeometry } from "./decompose";
+import { handleSides } from "./sides";
 import type { CalcSettings, DoorSpec, FrameProfile, GlassPanel, HandleProfile, ScrewGroup, ScrewLine } from "./types";
 
 const round1 = (v: number) => Math.round(v * 10) / 10;
@@ -58,8 +59,9 @@ export function computeScrews(spec: DoorSpec, frame: FrameProfile, handle: Handl
 
   const frameGroup = frame.screwGroup;
   const handleGroup = handle.screwGroup ?? frameGroup;
-  if (frameGroup) add(frameGroup.cornerType, 2, frameGroup.cornerQty, "sudut sisi biasa", frameGroup);
-  if (handleGroup) add(handleGroup.cornerType, 2, handleGroup.cornerQty, "sudut sisi gagang", handleGroup);
+  const handleCorners = spec.handleSide === "both" ? 4 : 2;
+  if (frameGroup) add(frameGroup.cornerType, 4 - handleCorners, frameGroup.cornerQty, "sudut sisi biasa", frameGroup);
+  if (handleGroup) add(handleGroup.cornerType, handleCorners, handleGroup.cornerQty, "sudut sisi gagang", handleGroup);
 
   // Tiap ruas divider punya 2 ujung. Divider horizontal terpotong oleh divider vertikal.
   const v = spec.vDividers.length;
@@ -68,4 +70,54 @@ export function computeScrews(spec: DoorSpec, frame: FrameProfile, handle: Handl
   if (frameGroup) add(frameGroup.jointType, dividerEnds, frameGroup.jointQty, "ujung divider", frameGroup);
 
   return [...lines.values()];
+}
+
+export type ScrewJoint = {
+  /** Posisi titik skrup: x dari kiri, y dari bawah pintu (tampak depan). */
+  x: number;
+  y: number;
+  kind: "corner" | "divider";
+  type: string;
+  qty: number;
+};
+
+/** Titik-titik skrup per sambungan, dengan aturan kelompok yang sama seperti computeScrews. */
+export function screwJoints(spec: DoorSpec, frame: FrameProfile, handle: HandleProfile): ScrewJoint[] {
+  const g = doorGeometry(spec, frame, handle);
+  const W = spec.width;
+  const H = spec.height;
+  const wF = g.frameWidth;
+  const frameGroup = frame.screwGroup;
+  const handleGroup = handle.screwGroup ?? frameGroup;
+  const withHandle = handleSides(spec);
+  const joints: ScrewJoint[] = [];
+
+  const push = (x: number, y: number, kind: ScrewJoint["kind"], group: ScrewGroup | null) => {
+    if (!group) return;
+    const type = (kind === "corner" ? group.cornerType : group.jointType).trim();
+    const qty = kind === "corner" ? group.cornerQty : group.jointQty;
+    if (type && qty > 0) joints.push({ x, y, kind, type, qty });
+  };
+
+  for (const side of ["left", "right"] as const) {
+    const x = side === "left" ? g.leftWidth / 2 : W - g.rightWidth / 2;
+    const group = withHandle.includes(side) ? handleGroup : frameGroup;
+    push(x, wF / 2, "corner", group);
+    push(x, H - wF / 2, "corner", group);
+  }
+
+  const vSorted = [...spec.vDividers].sort((a, b) => a - b);
+  for (const x of vSorted) {
+    push(x, wF / 2, "divider", frameGroup);
+    push(x, H - wF / 2, "divider", frameGroup);
+  }
+  // Ujung ruas divider horizontal menempel ke frame samping atau ke divider vertikal.
+  const ends = [g.leftWidth / 2, ...vSorted, W - g.rightWidth / 2];
+  for (const y of spec.hDividers) {
+    for (let i = 0; i < ends.length - 1; i++) {
+      push(ends[i], y, "divider", frameGroup);
+      push(ends[i + 1], y, "divider", frameGroup);
+    }
+  }
+  return joints;
 }

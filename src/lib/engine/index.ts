@@ -1,45 +1,46 @@
 import { computeGlass, computeScrews } from "./accessories";
-import { decomposeDoor, validateDoor } from "./decompose";
-import { feasibleHandleRanges, handlePlacements, subtractIntervals, type HandlePlacement } from "./handle";
-import { packItems } from "./pack";
+import { decomposeDoor, validateDoor, validateHinges } from "./decompose";
+import { planCuts } from "./plan";
+import { hingeSide } from "./sides";
 import {
   CalcError,
-  type BarPlan,
+  type BulkItem,
+  type BulkResult,
   type CalcResult,
   type CalcSettings,
   type DoorSpec,
   type FrameProfile,
   type HandleProfile,
-  type Piece,
-  type PlacedCut,
-  type ProfileSummary,
-  type Segment,
+  type HingeType,
+  type ScrewLine,
 } from "./types";
 
 export * from "./types";
-export { decomposeDoor, doorGeometry, validateDoor } from "./decompose";
+export { decomposeDoor, doorGeometry, validateDoor, validateHinges } from "./decompose";
+export * from "./sides";
+export { screwJoints } from "./accessories";
 export { clampToRanges, feasibleHandleRanges } from "./handle";
+export { cutAllowance } from "./plan";
 
-/** Material yang hilang di batang untuk satu potongan, termasuk mata gergaji. */
-export function cutAllowance(piece: Pick<Piece, "angle">, settings: CalcSettings): number {
-  // Potongan miring 45° memakan kerf lebih panjang di sepanjang batang (kerf / sin 45°).
-  return piece.angle === "miter" ? settings.kerf * Math.SQRT2 : settings.kerf;
+function hingeResult(spec: DoorSpec, hingeTypes: HingeType[]): CalcResult["hinges"] {
+  const side = hingeSide(spec);
+  const type = hingeTypes.find((t) => t.id === spec.hingeTypeId);
+  if (!side || !type) return null;
+  return {
+    typeId: type.id,
+    name: type.name,
+    length: type.length,
+    side,
+    positions: [...spec.hinges].sort((a, b) => a - b),
+  };
 }
 
-const blockedByCuts = (cuts: PlacedCut[], kerf: number): Segment[] =>
-  cuts.map((c) => ({ start: c.start - kerf, length: c.length + 2 * kerf }));
-
-function finishBar(bar: Omit<BarPlan, "leftovers" | "scraps">, settings: CalcSettings): BarPlan {
-  const a = settings.endTrim;
-  const b = bar.barLength - settings.endTrim;
-  const free = subtractIntervals(a, b, blockedByCuts(bar.cuts, settings.kerf * Math.SQRT2));
-  const leftovers = free.filter((f) => f.length >= settings.minUsableOffcut);
-  const scraps = free.filter((f) => f.length < settings.minUsableOffcut);
-  if (settings.endTrim > 0) {
-    scraps.unshift({ start: 0, length: a });
-    scraps.push({ start: b, length: settings.endTrim });
-  }
-  return { ...bar, leftovers, scraps };
+function resolveProfiles(spec: DoorSpec, frames: FrameProfile[], handles: HandleProfile[]) {
+  const frame = frames.find((f) => f.id === spec.frameProfileId);
+  const handle = handles.find((h) => h.id === spec.handleProfileId);
+  if (!frame) throw new CalcError([{ field: "frameProfileId", message: "Pilih jenis frame" }]);
+  if (!handle) throw new CalcError([{ field: "handleProfileId", message: "Pilih jenis gagang" }]);
+  return { frame, handle };
 }
 
 export function calculate(
@@ -47,167 +48,88 @@ export function calculate(
   frames: FrameProfile[],
   handles: HandleProfile[],
   settings: CalcSettings,
+  hingeTypes: HingeType[] = [],
 ): CalcResult {
-  const frame = frames.find((f) => f.id === spec.frameProfileId);
-  const handle = handles.find((h) => h.id === spec.handleProfileId);
-  if (!frame) throw new CalcError([{ field: "frameProfileId", message: "Pilih jenis frame" }]);
-  if (!handle) throw new CalcError([{ field: "handleProfileId", message: "Pilih jenis gagang" }]);
-
-  const issues = validateDoor(spec, frame, handle);
+  const { frame, handle } = resolveProfiles(spec, frames, handles);
+  const issues = [...validateDoor(spec, frame, handle), ...validateHinges(spec, hingeTypes)];
   if (issues.length) throw new CalcError(issues);
 
   const pieces = decomposeDoor(spec, frame, handle);
-  const a = settings.endTrim;
-
-  // 1. Frame gagang: cari posisi potong di batang gagang.
-  type HandleBar = Omit<BarPlan, "leftovers" | "scraps">;
-  const handleBars: HandleBar[] = [];
-  for (const piece of pieces.filter((p) => p.stock.kind === "handle")) {
-    const placements = handlePlacements(handle, settings, piece.length, piece.handleOffset!, frame.faceWidth);
-    if (!placements.length) {
-      const ranges = feasibleHandleRanges(handle, settings, piece.length, frame.faceWidth);
-      const hint = ranges.length
-        ? `Tinggi gagang yang bisa: ${ranges.map((r) => `${r.start}–${r.start + r.length} mm`).join(", ")}`
-        : `Batang ${handle.name} tidak bisa dipakai untuk pintu setinggi ${piece.length} mm`;
-      throw new CalcError([{ field: "handleHeight", message: hint }]);
-    }
-
-    const kerf = settings.kerf * Math.SQRT2;
-    const fits = (bar: HandleBar, p: HandlePlacement) =>
-      bar.cuts.every((c) => p.start + piece.length + kerf <= c.start || c.start + c.length + kerf <= p.start);
-    const largestFree = (bar: HandleBar, p: HandlePlacement) => {
-      const cuts = [...bar.cuts, { start: p.start, length: piece.length } as PlacedCut];
-      const free = subtractIntervals(a, handle.barLength - a, blockedByCuts(cuts, kerf));
-      return Math.max(0, ...free.map((f) => f.length));
-    };
-
-    let chosen: { bar: HandleBar; p: HandlePlacement } | null = null;
-    for (const bar of handleBars) {
-      for (const p of placements.filter((pl) => fits(bar, pl))) {
-        if (!chosen || largestFree(bar, p) > largestFree(chosen.bar, chosen.p)) chosen = { bar, p };
-      }
-    }
-    if (!chosen) {
-      const bar: HandleBar = {
-        id: `G${handleBars.length + 1}`,
-        kind: "handle",
-        profileId: handle.id,
-        profileName: handle.name,
-        color: handle.color,
-        barLength: handle.barLength,
-        zones: handle.zones,
-        cuts: [],
-      };
-      const best = placements.reduce((x, y) => (largestFree(bar, y) > largestFree(bar, x) ? y : x));
-      handleBars.push(bar);
-      chosen = { bar, p: best };
-    }
-    chosen.bar.cuts.push({
-      pieceId: piece.id,
-      label: piece.label,
-      length: piece.length,
-      angle: piece.angle,
-      kind: "handle",
-      start: chosen.p.start,
-      flipped: chosen.p.flipped,
-    });
-  }
-
-  // 2. Sisa batang gagang (tanpa zona gagang) bisa dipakai sebagai frame.
-  const kerfMiter = settings.kerf * Math.SQRT2;
-  const offcuts: { bar: HandleBar; seg: Segment }[] = [];
-  if (handle.remainderFrameProfileId === frame.id) {
-    for (const bar of handleBars) {
-      const blocked = [
-        ...blockedByCuts(bar.cuts, kerfMiter),
-        ...handle.zones.map((z) => ({ start: z.start - kerfMiter, length: z.length + 2 * kerfMiter })),
-      ];
-      for (const seg of subtractIntervals(a, bar.barLength - a, blocked)) offcuts.push({ bar, seg });
-    }
-  }
-
-  // 3. Optimasi potongan frame.
-  const framePieces = pieces.filter((p) => p.stock.kind === "frame");
-  const usable = frame.barLength - 2 * a;
-  let packed;
-  try {
-    packed = packItems(
-      framePieces.map((p) => ({ weight: p.length + cutAllowance(p, settings), data: p })),
-      offcuts.map((o) => o.seg.length + settings.kerf),
-      usable + settings.kerf,
-    );
-  } catch (e) {
-    throw new CalcError([{ field: "width", message: (e as Error).message }]);
-  }
-
-  const place = (target: { cuts: PlacedCut[] }, from: number, list: Piece[]) => {
-    let pos = from;
-    for (const p of list) {
-      target.cuts.push({ pieceId: p.id, label: p.label, length: p.length, angle: p.angle, kind: "frame", start: pos });
-      pos += p.length + cutAllowance(p, settings);
-    }
-  };
-  packed.freeBins.forEach((list, i) => place(offcuts[i].bar, offcuts[i].seg.start, list));
-
-  const frameBars: HandleBar[] = packed.newBins.map((list, i) => {
-    const bar: HandleBar = {
-      id: `F${i + 1}`,
-      kind: "frame",
-      profileId: frame.id,
-      profileName: frame.name,
-      color: frame.color,
-      barLength: frame.barLength,
-      cuts: [],
-    };
-    place(bar, a, list);
-    return bar;
-  });
-
-  const bars = [...handleBars, ...frameBars].map((bar) => {
-    bar.cuts.sort((x, y) => x.start - y.start);
-    return finishBar(bar, settings);
-  });
-
-  // 4. Ringkasan dan statistik.
-  const summary: ProfileSummary[] = [
-    {
-      kind: "handle",
-      profileId: handle.id,
-      profileName: handle.name,
-      color: handle.color,
-      barLength: handle.barLength,
-      newBars: handleBars.length,
-    },
-    {
-      kind: "frame",
-      profileId: frame.id,
-      profileName: frame.name,
-      color: frame.color,
-      barLength: frame.barLength,
-      newBars: frameBars.length,
-    },
-  ].filter((s) => s.newBars > 0) as ProfileSummary[];
-
-  const materialLength = bars.reduce((s, b) => s + b.barLength, 0);
-  const piecesLength = pieces.reduce((s, p) => s + p.length, 0);
-  const usableLeftover = bars.reduce((s, b) => s + b.leftovers.reduce((t, l) => t + l.length, 0), 0);
-  const scrap = materialLength - piecesLength - usableLeftover;
-
   return {
     pieces,
-    bars,
-    summary,
+    ...planCuts(pieces, frames, handles, settings),
     glass: computeGlass(spec, frame, handle, settings),
+    hinges: hingeResult(spec, hingeTypes),
     screws: computeScrews(spec, frame, handle),
-    stats: {
-      totalNewBars: bars.length,
-      materialLength,
-      piecesLength,
-      usableLeftover,
-      scrap,
-      efficiency: materialLength ? piecesLength / materialLength : 0,
-      zeroWasteScore: materialLength ? 1 - scrap / materialLength : 0,
-      optimal: packed.optimal,
-    },
+  };
+}
+
+/** Awalan ID potongan untuk satu unit pintu di bulk, mis. "P2-1:". */
+export const bulkPrefix = (code: string, unit: number) => `${code}-${unit}:`;
+
+/** Nama satu unit pintu di bulk, mis. "P2" atau "P2 (1/3)". */
+export const bulkUnitName = (code: string, unit: number, qty: number) => (qty > 1 ? `${code} (${unit}/${qty})` : code);
+
+/**
+ * Beberapa pintu dihitung bersama dalam satu pembelian, supaya sisa batang satu pintu
+ * bisa dipakai pintu lain. Setiap unit tetap divalidasi seperti dihitung sendiri.
+ */
+export function calculateBulk(
+  items: BulkItem[],
+  frames: FrameProfile[],
+  handles: HandleProfile[],
+  settings: CalcSettings,
+  hingeTypes: HingeType[] = [],
+): BulkResult {
+  if (!items.length) throw new CalcError([{ field: "bulk", message: "Bulk masih kosong" }]);
+
+  const doors = items.map((item, i) => {
+    const code = `P${i + 1}`;
+    let single: CalcResult;
+    try {
+      single = calculate(item.spec, frames, handles, settings, hingeTypes);
+    } catch (e) {
+      if (e instanceof CalcError) {
+        throw new CalcError(e.issues.map((iss) => ({ ...iss, message: `${code}: ${iss.message}` })));
+      }
+      throw e;
+    }
+    return { code, label: item.label, spec: item.spec, qty: Math.max(1, Math.round(item.qty)), single };
+  });
+
+  // Semua potongan dari semua unit, ID diberi awalan supaya tetap unik.
+  const pieces = doors.flatMap((d) =>
+    Array.from({ length: d.qty }, (_, k) => {
+      const name = bulkUnitName(d.code, k + 1, d.qty);
+      return d.single.pieces.map((p) => ({
+        ...p,
+        id: `${bulkPrefix(d.code, k + 1)}${p.id}`,
+        label: `${name} · ${p.label}`,
+        door: name,
+      }));
+    }).flat(),
+  );
+
+  const screwMap = new Map<string, ScrewLine>();
+  const hingeMap = new Map<string, number>();
+  for (const d of doors) {
+    for (const l of d.single.screws) {
+      const line = screwMap.get(l.type) ?? { type: l.type, qty: 0, detail: [] };
+      line.qty += l.qty * d.qty;
+      line.detail.push(`${d.code}: ${l.qty}${d.qty > 1 ? ` × ${d.qty}` : ""}`);
+      screwMap.set(l.type, line);
+    }
+    if (d.single.hinges) {
+      const h = d.single.hinges;
+      hingeMap.set(h.name, (hingeMap.get(h.name) ?? 0) + h.positions.length * d.qty);
+    }
+  }
+
+  return {
+    ...planCuts(pieces, frames, handles, settings),
+    doors,
+    separateBars: doors.reduce((s, d) => s + d.single.stats.totalNewBars * d.qty, 0),
+    screws: [...screwMap.values()],
+    hinges: [...hingeMap.entries()].map(([name, qty]) => ({ name, qty })),
   };
 }

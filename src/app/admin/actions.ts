@@ -143,6 +143,30 @@ export async function deleteScrewGroup(id: number) {
   refresh();
 }
 
+// ---------- Engsel ----------
+
+const hingeTypeSchema = z.object({
+  name: z.string().trim().min(1, "Nama wajib diisi"),
+  length: z.coerce.number().int().min(20, "Minimal 20 mm").max(500, "Maksimal 500 mm"),
+  active: z.preprocess((v) => v === "on", z.boolean()),
+});
+
+export async function saveHingeType(id: number | null, _: FormState, formData: FormData): Promise<FormState> {
+  await requireUser("admin");
+  const parsed = hingeTypeSchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) return fail(parsed.error);
+  if (id) await db.update(schema.hingeTypes).set(parsed.data).where(eq(schema.hingeTypes.id, id));
+  else await db.insert(schema.hingeTypes).values(parsed.data);
+  refresh();
+  return { ok: true };
+}
+
+export async function deleteHingeType(id: number) {
+  await requireUser("admin");
+  await db.delete(schema.hingeTypes).where(eq(schema.hingeTypes.id, id));
+  refresh();
+}
+
 // ---------- Pengaturan ----------
 
 const settingsSchema = z.object({

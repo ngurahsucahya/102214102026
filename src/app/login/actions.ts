@@ -10,7 +10,9 @@ import { encryptSession, homeFor, SESSION_COOKIE, sessionCookieOptions } from "@
 export type LoginState = { error?: string } | undefined;
 
 export async function login(_: LoginState, formData: FormData): Promise<LoginState> {
-  const username = String(formData.get("username") ?? "").trim().toLowerCase();
+  const username = String(formData.get("username") ?? "")
+    .trim()
+    .toLowerCase();
   const password = String(formData.get("password") ?? "");
   if (!username || !password) return { error: "Isi username dan password" };
 

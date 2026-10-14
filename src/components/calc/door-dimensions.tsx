@@ -1,8 +1,9 @@
 import type { DoorGeometry } from "@/lib/engine/decompose";
-import type { DoorSpec, GlassPanel } from "@/lib/engine/types";
+import { hingeSide } from "@/lib/engine/sides";
+import type { DoorSpec, GlassPanel, Side } from "@/lib/engine/types";
+import { formatLength, type Unit } from "@/lib/units";
 
 const INK = "#374151";
-const fmt = (v: number) => (Math.round(v * 10) / 10).toLocaleString("id-ID");
 
 /** Batas-batas berurutan: tepi luar, tebal frame, bukaan, tebal divider, ..., tepi luar. */
 function chainBounds(outer: number, startWidth: number, endWidth: number, dividers: number[], dividerWidth: number) {
@@ -16,11 +17,16 @@ function chainBounds(outer: number, startWidth: number, endWidth: number, divide
   ];
 }
 
-/** Ruang gambar yang dibutuhkan di luar pintu untuk garis ukur (dalam satuan font). */
-export function detailPadding(spec: DoorSpec, font: number) {
+/** Sisi tempat garis ukur tinggi gagang; untuk gagang di kedua sisi dipakai sisi kanan. */
+const handleDimSide = (spec: DoorSpec): Side => (spec.handleSide === "left" ? "left" : "right");
+
+/** Ruang gambar yang dibutuhkan di luar pintu untuk garis ukur. */
+export function detailPadding(spec: DoorSpec, font: number, withHinges = false) {
+  const hinge = withHinges ? hingeSide(spec) : null;
+  const outer = (side: Side) => handleDimSide(spec) === side || hinge === side;
   return {
-    left: font * (spec.handleSide === "left" ? 6.4 : 3.8),
-    right: font * (spec.handleSide === "right" ? 7.4 : 4.8),
+    left: font * (outer("left") ? 7.6 : 3.8),
+    right: font * (outer("right") ? 8.6 : 4.8),
     top: font * 3.6,
     bottom: font * 3.6,
   };
@@ -30,15 +36,32 @@ type Props = {
   spec: DoorSpec;
   g: DoorGeometry;
   glass?: GlassPanel[];
+  /** Titik tengah engsel dari bawah; kosong jika tidak ada engsel. */
+  hinges?: number[];
+  hingeLength?: number;
+  /** Tampak belakang: kolom kaca terbalik, nomor kaca tetap mengikuti tampak depan. */
+  mirrored?: boolean;
+  unit: Unit;
   font: number;
   stroke: number;
 };
 
 /**
  * Gambar kerja: rantai ukuran horizontal (atas) dan vertikal (kanan) berisi tebal frame,
- * bukaan kaca, dan tebal divider; ukuran total; tinggi gagang; serta ukuran potong tiap kaca.
+ * bukaan kaca, dan tebal divider; ukuran total; tinggi gagang; posisi engsel; serta ukuran potong tiap kaca.
  */
-export function DoorDimensions({ spec, g, glass = [], font, stroke }: Props) {
+export function DoorDimensions({
+  spec,
+  g,
+  glass = [],
+  hinges = [],
+  hingeLength = 0,
+  mirrored = false,
+  unit,
+  font,
+  stroke,
+}: Props) {
+  const fmt = (mm: number) => formatLength(mm, unit);
   const W = spec.width;
   const H = spec.height;
   const y = (fromBottom: number) => H - fromBottom;
@@ -66,35 +89,40 @@ export function DoorDimensions({ spec, g, glass = [], font, stroke }: Props) {
 
   // ---- rantai vertikal di kanan pintu ----
   const rightX = W + font * 1.4;
-  const vLabels: { y: number; tier: number; text: string }[] = [];
-  let lastTop = Infinity;
-  for (let i = 1; i < vBounds.length; i++) {
-    const len = vBounds[i] - vBounds[i - 1];
-    if (len <= 0) continue;
-    const text = fmt(len);
-    const cy = y((vBounds[i] + vBounds[i - 1]) / 2);
-    let tier = len >= textW(text) + font * 0.3 ? 0 : 1;
-    if (tier === 1 && cy + textW(text) / 2 > lastTop - font * 0.3) tier = 2;
-    if (tier > 0) lastTop = cy - textW(text) / 2;
-    vLabels.push({ y: cy, tier, text });
-  }
+  const vLabels = verticalLabels(fmt, vBounds, y, textW, font);
 
   // ---- ukuran total ----
   const bottomY = H + font * 1.6;
   const leftX = -font * 1.5;
 
-  // Label tinggi total di tengah, kecuali bertabrakan dengan garis bantu gagang (gagang di kiri).
+  // ---- slot terluar tiap sisi: tinggi gagang dan rantai engsel ----
+  const slotX = (side: Side) => (side === "right" ? W + font * 5.4 : -font * 4.4);
+  const edgeX = (side: Side) => (side === "right" ? W : 0);
+  const outward = (side: Side) => (side === "right" ? 1 : -1);
+  const hSide = handleDimSide(spec);
+  const handleX = slotX(hSide);
   const handleY = y(spec.handleHeight);
-  const heightLabelY =
-    spec.handleSide === "left" && Math.abs(H / 2 - handleY) < textW(fmt(H)) / 2 + font
-      ? handleY > H / 2
-        ? handleY - textW(fmt(H)) / 2 - font * 1.5
-        : handleY + textW(fmt(H)) / 2 + font * 1.5
-      : H / 2;
 
-  // ---- tinggi gagang, di sisi gagang paling luar ----
-  const handleX = spec.handleSide === "right" ? W + font * 5.4 : -font * 4.4;
-  const handleEdge = spec.handleSide === "right" ? W : 0;
+  const hingeSideNow = hinges.length ? hingeSide(spec) : null;
+  const hingeX = hingeSideNow ? slotX(hingeSideNow) : 0;
+  // Rantai engsel diukur dari ujung engsel: lantai → ujung bawah → ujung atas → ... → atas pintu.
+  const hingeBounds = [
+    0,
+    ...[...hinges].sort((a, b) => a - b).flatMap((c) => [c - hingeLength / 2, c + hingeLength / 2]),
+    H,
+  ];
+  const hingeLabels = hingeSideNow ? verticalLabels(fmt, hingeBounds, y, textW, font) : [];
+
+  // Label tinggi total di kiri dihindarkan dari garis bantu yang melintas di sisi kiri.
+  const leftCrossings = [
+    ...(hSide === "left" ? [handleY] : []),
+    ...(hingeSideNow === "left" ? hingeBounds.slice(1, -1).map(y) : []),
+  ];
+  const clearance = textW(fmt(H)) / 2 + font;
+  const heightLabelY =
+    [H / 2, H * 0.35, H * 0.65, H * 0.25, H * 0.75, H * 0.15, H * 0.85].find((c) =>
+      leftCrossings.every((cy) => Math.abs(c - cy) >= clearance),
+    ) ?? H / 2;
 
   // ---- label kaca, urutan sama dengan computeGlass: baris dari atas, kolom dari kiri ----
   const cols: [number, number][] = [];
@@ -102,7 +130,9 @@ export function DoorDimensions({ spec, g, glass = [], font, stroke }: Props) {
   const rows: [number, number][] = [];
   for (let i = 1; i < vBounds.length - 1; i += 2) rows.push([vBounds[i], vBounds[i + 1]]);
   rows.reverse();
-  const cells = rows.flatMap(([b, t]) => cols.map(([l, r]) => ({ l, r, b, t })));
+  const cells = rows.flatMap(([b, t], r) =>
+    cols.map(([l, rr], c) => ({ l, r: rr, b, t, index: r * cols.length + (mirrored ? cols.length - 1 - c : c) })),
+  );
 
   const line = (x1: number, y1: number, x2: number, y2: number, key?: string) => (
     <line key={key} x1={x1} y1={y1} x2={x2} y2={y2} />
@@ -135,15 +165,21 @@ export function DoorDimensions({ spec, g, glass = [], font, stroke }: Props) {
         {slash(leftX, H, "lb")}
 
         {/* tinggi gagang */}
-        {line(
-          handleEdge,
-          y(spec.handleHeight),
-          handleX + (spec.handleSide === "right" ? font * 0.3 : -font * 0.3),
-          y(spec.handleHeight),
-        )}
-        {line(handleX, y(spec.handleHeight), handleX, H)}
-        {slash(handleX, y(spec.handleHeight), "gt")}
+        {line(edgeX(hSide), handleY, handleX + outward(hSide) * font * 0.3, handleY)}
+        {line(handleX, handleY, handleX, H)}
+        {slash(handleX, handleY, "gt")}
         {slash(handleX, H, "gb")}
+
+        {/* rantai engsel: lantai → engsel 1 → engsel 2 → ... → atas */}
+        {hingeSideNow && (
+          <>
+            {hingeBounds.map((v, i) =>
+              line(edgeX(hingeSideNow), y(v), hingeX + outward(hingeSideNow) * font * 0.3, y(v), `ee${i}`),
+            )}
+            {line(hingeX, 0, hingeX, H)}
+            {hingeBounds.map((v, i) => slash(hingeX, y(v), `et${i}`))}
+          </>
+        )}
       </g>
 
       <g fill={INK} fontSize={font} fontWeight="500">
@@ -173,7 +209,7 @@ export function DoorDimensions({ spec, g, glass = [], font, stroke }: Props) {
           {fmt(H)}
         </text>
         {(() => {
-          const x = handleX + (spec.handleSide === "right" ? font * 1.05 : -font * 0.35);
+          const x = handleX + (hSide === "right" ? font * 1.05 : -font * 0.35);
           const cy = y(spec.handleHeight / 2);
           return (
             <text x={x} y={cy} textAnchor="middle" fill="#b45309" transform={`rotate(-90 ${x} ${cy})`}>
@@ -181,11 +217,28 @@ export function DoorDimensions({ spec, g, glass = [], font, stroke }: Props) {
             </text>
           );
         })()}
+        {hingeSideNow &&
+          hingeLabels.map((l, i) => {
+            const base = hingeX + (hingeSideNow === "right" ? font * 1.05 : -font * 0.35);
+            const x = base + outward(hingeSideNow) * l.tier * font * 1.05;
+            return (
+              <text
+                key={`el${i}`}
+                x={x}
+                y={l.y}
+                textAnchor="middle"
+                fill="#4b5563"
+                transform={`rotate(-90 ${x} ${l.y})`}
+              >
+                {l.text}
+              </text>
+            );
+          })}
       </g>
 
       {/* ukuran potong kaca di tengah panel */}
-      {cells.map((c, i) => {
-        const panel = glass[i];
+      {cells.map((c) => {
+        const panel = glass[c.index];
         if (!panel) return null;
         const size = `${fmt(panel.width)} × ${fmt(panel.height)}`;
         const w = c.r - c.l;
@@ -206,4 +259,27 @@ export function DoorDimensions({ spec, g, glass = [], font, stroke }: Props) {
       })}
     </g>
   );
+}
+
+/** Label rantai vertikal; ruas pendek digeser keluar satu/dua tingkat supaya tidak bertumpuk. */
+function verticalLabels(
+  fmt: (mm: number) => string,
+  bounds: number[],
+  y: (fromBottom: number) => number,
+  textW: (s: string) => number,
+  font: number,
+) {
+  const labels: { y: number; tier: number; text: string }[] = [];
+  let lastTop = Infinity;
+  for (let i = 1; i < bounds.length; i++) {
+    const len = bounds[i] - bounds[i - 1];
+    if (len <= 0) continue;
+    const text = fmt(len);
+    const cy = y((bounds[i] + bounds[i - 1]) / 2);
+    let tier = len >= textW(text) + font * 0.3 ? 0 : 1;
+    if (tier === 1 && cy + textW(text) / 2 > lastTop - font * 0.3) tier = 2;
+    if (tier > 0) lastTop = cy - textW(text) / 2;
+    labels.push({ y: cy, tier, text });
+  }
+  return labels;
 }

@@ -2,6 +2,8 @@ import { History, LogOut } from "lucide-react";
 import Link from "next/link";
 import { Suspense } from "react";
 import { DoorMark } from "@/components/door-mark";
+import { BulkLink } from "@/components/calc/bulk-link";
+import { UnitToggle } from "@/components/unit-context";
 import { getCurrentUser } from "@/lib/auth";
 import { logout } from "../login/actions";
 
@@ -15,9 +17,11 @@ export default function FieldLayout({ children }: LayoutProps<"/lapangan">) {
             <span className="font-semibold">Pintu Custom</span>
           </Link>
           <nav className="flex items-center gap-1">
+            <UnitToggle />
             <Suspense fallback={null}>
               <UserName />
             </Suspense>
+            <BulkLink />
             <Link href="/lapangan/riwayat" className="btn border-transparent px-2.5">
               <History className="size-4" />
               <span className="hidden sm:inline">Riwayat</span>

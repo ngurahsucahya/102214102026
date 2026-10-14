@@ -37,4 +37,9 @@ Kode engine ada di `src/lib/engine`. Engine ini TypeScript murni, dipakai di bro
 5. **Kaca** (`accessories.ts`): bukaan = ukuran pintu dikurangi tebal frame, tebal gagang, dan tebal divider. Ukuran potong kaca = bukaan + 2 × "kaca masuk alur" (pengaturan admin).
 6. **Skrup** (`accessories.ts`): tiap batang punya kelompok skrup (jenis + jumlah per sudut frame, jenis + jumlah per ujung divider). 2 sudut di sisi gagang memakai kelompok batang gagang (kalau kosong ikut frame). 2 sudut lain dan semua ujung divider memakai kelompok frame. Hasilnya dijumlahkan per jenis skrup.
 
+7. **Tipe pintu**: *swing* punya gagang di kiri atau kanan, dan engselnya ada di sisi seberang gagang (jenis dari admin; jumlah dan posisi diatur petugas, awalnya dibagi rata 200 mm dari bawah dan atas). *Slider* tidak memakai engsel, dan gagangnya bisa di kiri, kanan, atau keduanya (dua frame gagang).
+8. **Tampak belakang** (`screwJoints`): gambar dicerminkan dan menampilkan titik skrup per sambungan. Total titik selalu sama dengan tabel skrup.
+
+9. **Bulk** (`calculateBulk`): beberapa pintu (masing-masing bisa beberapa unit) dihitung bersama. Semua potongan digabung ke satu rencana potong, jadi sisa batang satu pintu dipakai pintu lain. Hasilnya dibandingkan dengan jumlah batang kalau tiap unit dihitung terpisah. Draf bulk disimpan di browser, dan setelah disimpan masuk ke riwayat (`bulk_calculations`).
+
 Efisiensi material = 1 − waste / total panjang batang. Sisa yang masih berguna tidak dihitung sebagai waste.
