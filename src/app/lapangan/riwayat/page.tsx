@@ -1,8 +1,8 @@
 import { desc, eq } from "drizzle-orm";
-import { ChevronDown } from "lucide-react";
+import { ChevronRight } from "lucide-react";
 import type { Metadata } from "next";
+import Link from "next/link";
 import { Suspense } from "react";
-import { BarPlanView } from "@/components/calc/bar-plan-view";
 import { Length } from "@/components/unit-context";
 import { db, schema } from "@/db";
 import { requireUser } from "@/lib/auth";
@@ -48,29 +48,25 @@ async function Content() {
               const units = b.items.reduce((s, it) => s + it.qty, 0);
               return (
                 <li key={b.id}>
-                  <details className="group card p-4">
-                    <summary className="flex cursor-pointer list-none items-center gap-3">
-                      <div className="min-w-0 flex-1">
-                        <div className="truncate font-semibold">{b.label || "Bulk tanpa nama"}</div>
-                        <div className="text-xs text-muted">
-                          {b.items.length} jenis pintu · {units} unit ·{" "}
-                          {b.createdAt.toLocaleString("id-ID", { dateStyle: "medium", timeStyle: "short" })}
-                        </div>
+                  <Link
+                    href={`/lapangan/riwayat/bulk/${b.id}`}
+                    className="card flex items-center gap-3 p-4 transition hover:border-accent"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate font-semibold">{b.label || "Bulk tanpa nama"}</div>
+                      <div className="text-xs text-muted">
+                        {b.items.length} jenis pintu · {units} unit ·{" "}
+                        {b.createdAt.toLocaleString("id-ID", { dateStyle: "medium", timeStyle: "short" })}
                       </div>
-                      <div className="text-right text-sm">
-                        <div className="font-semibold tabular-nums">{b.totalBars} batang</div>
-                        <div className="text-xs text-muted">
-                          {b.separateBars > b.totalBars ? `hemat ${b.separateBars - b.totalBars}` : "tanpa hemat"}
-                        </div>
-                      </div>
-                      <ChevronDown className="size-4 text-muted transition group-open:rotate-180" />
-                    </summary>
-                    <div className="mt-3 space-y-2">
-                      {b.result.bars.map((bar) => (
-                        <BarPlanView key={bar.id} bar={bar} />
-                      ))}
                     </div>
-                  </details>
+                    <div className="text-right text-sm">
+                      <div className="font-semibold tabular-nums">{b.totalBars} batang</div>
+                      <div className="text-xs text-muted">
+                        {b.separateBars > b.totalBars ? `hemat ${b.separateBars - b.totalBars}` : "tanpa hemat"}
+                      </div>
+                    </div>
+                    <ChevronRight className="size-4 text-muted" />
+                  </Link>
                 </li>
               );
             })}
@@ -83,27 +79,23 @@ async function Content() {
           <ul className="space-y-2">
             {rows.map((r) => (
               <li key={r.id}>
-                <details className="group card p-4">
-                  <summary className="flex cursor-pointer list-none items-center gap-3">
-                    <div className="min-w-0 flex-1">
-                      <div className="truncate font-semibold">{r.label || "Tanpa nama"}</div>
-                      <div className="text-xs text-muted">
-                        <Length mm={r.spec.width} suffix={false} /> × <Length mm={r.spec.height} /> ·{" "}
-                        {r.createdAt.toLocaleString("id-ID", { dateStyle: "medium", timeStyle: "short" })}
-                      </div>
+                <Link
+                  href={`/lapangan/riwayat/${r.id}`}
+                  className="card flex items-center gap-3 p-4 transition hover:border-accent"
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate font-semibold">{r.label || "Tanpa nama"}</div>
+                    <div className="text-xs text-muted">
+                      <Length mm={r.spec.width} suffix={false} /> × <Length mm={r.spec.height} /> ·{" "}
+                      {r.createdAt.toLocaleString("id-ID", { dateStyle: "medium", timeStyle: "short" })}
                     </div>
-                    <div className="text-right text-sm">
-                      <div className="font-semibold tabular-nums">{r.totalBars} batang</div>
-                      <div className="text-xs text-muted">Efisiensi {Math.round(r.score * 100)}%</div>
-                    </div>
-                    <ChevronDown className="size-4 text-muted transition group-open:rotate-180" />
-                  </summary>
-                  <div className="mt-3 space-y-2">
-                    {r.result.bars.map((bar) => (
-                      <BarPlanView key={bar.id} bar={bar} />
-                    ))}
                   </div>
-                </details>
+                  <div className="text-right text-sm">
+                    <div className="font-semibold tabular-nums">{r.totalBars} batang</div>
+                    <div className="text-xs text-muted">Efisiensi {Math.round(r.score * 100)}%</div>
+                  </div>
+                  <ChevronRight className="size-4 text-muted" />
+                </Link>
               </li>
             ))}
           </ul>

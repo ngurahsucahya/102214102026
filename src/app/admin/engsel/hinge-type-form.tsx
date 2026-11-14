@@ -1,13 +1,13 @@
 "use client";
 
 import { useActionState, useEffect, useRef } from "react";
-import { FieldError, FormAlert } from "@/components/admin-ui";
+import { FieldError, FormAlert, MaterialSelect, type GroupOption } from "@/components/admin-ui";
 import { DeleteButton } from "@/components/delete-button";
 import { deleteHingeType, saveHingeType, type FormState } from "../actions";
 
-type Values = { id: number | null; name: string; length: number; active: boolean };
+type Values = { id: number | null; name: string; length: number; materialId: number | null; active: boolean };
 
-export function HingeTypeForm({ initial }: { initial: Values }) {
+export function HingeTypeForm({ initial, materials }: { initial: Values; materials: GroupOption[] }) {
   const [state, action, pending] = useActionState<FormState, FormData>(saveHingeType.bind(null, initial.id), undefined);
   const ref = useRef<HTMLFormElement>(null);
   const fe = state?.fieldErrors ?? {};
@@ -55,6 +55,7 @@ export function HingeTypeForm({ initial }: { initial: Values }) {
           <FieldError message={fe.length} />
         </div>
       </div>
+      <MaterialSelect materials={materials} value={initial.materialId} />
       <label className="flex items-center gap-2 text-sm">
         <input
           type="checkbox"

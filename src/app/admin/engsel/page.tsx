@@ -1,7 +1,7 @@
 import { Suspense } from "react";
 import { PageHeader, Skeleton } from "@/components/admin-ui";
 import { requireUser } from "@/lib/auth";
-import { listHingeTypes } from "@/lib/data";
+import { listHingeTypes, listMaterialOptions } from "@/lib/data";
 import { HingeTypeForm } from "./hinge-type-form";
 
 export default function HingeTypesPage() {
@@ -20,16 +20,19 @@ export default function HingeTypesPage() {
 
 async function Content() {
   await requireUser("admin");
-  const hinges = await listHingeTypes();
+  const [hinges, materials] = await Promise.all([listHingeTypes(), listMaterialOptions("engsel")]);
   return (
     <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
       <div className="space-y-3">
         {hinges.length === 0 && <div className="card p-6 text-sm text-muted">Belum ada jenis engsel.</div>}
         {hinges.map((h) => (
-          <HingeTypeForm key={h.id} initial={h} />
+          <HingeTypeForm key={h.id} initial={h} materials={materials} />
         ))}
       </div>
-      <HingeTypeForm initial={{ id: null, name: "", length: 100, active: true }} />
+      <HingeTypeForm
+        initial={{ id: null, name: "", length: 100, materialId: null, active: true }}
+        materials={materials}
+      />
     </div>
   );
 }

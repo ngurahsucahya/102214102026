@@ -18,6 +18,9 @@ const specSchema = z.object({
   vDividers: z.array(z.number()).max(10),
   hingeTypeId: z.number().int().nullable(),
   hinges: z.array(z.number()).max(10),
+  sealMaterialId: z.number().int().nullable().default(null),
+  cornerMaterialId: z.number().int().nullable().default(null),
+  pinMaterialId: z.number().int().nullable().default(null),
 });
 
 export type SaveResult = { ok: true; id: number } | { ok: false; error: string };
@@ -30,7 +33,14 @@ export async function saveCalculation(rawSpec: unknown, label: string): Promise<
 
   const catalog = await getCalcCatalog();
   try {
-    const result = calculate(parsed.data, catalog.frames, catalog.handles, catalog.settings, catalog.hingeTypes);
+    const result = calculate(
+      parsed.data,
+      catalog.frames,
+      catalog.handles,
+      catalog.settings,
+      catalog.hingeTypes,
+      catalog.materials,
+    );
     const [row] = await db
       .insert(schema.calculations)
       .values({
@@ -63,7 +73,14 @@ export async function saveBulk(rawItems: unknown, label: string): Promise<SaveRe
 
   const catalog = await getCalcCatalog();
   try {
-    const result = calculateBulk(parsed.data, catalog.frames, catalog.handles, catalog.settings, catalog.hingeTypes);
+    const result = calculateBulk(
+      parsed.data,
+      catalog.frames,
+      catalog.handles,
+      catalog.settings,
+      catalog.hingeTypes,
+      catalog.materials,
+    );
     const [row] = await db
       .insert(schema.bulkCalculations)
       .values({

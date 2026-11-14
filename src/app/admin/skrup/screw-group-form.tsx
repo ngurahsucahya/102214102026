@@ -63,6 +63,7 @@ export function ScrewGroupForm({ initial, usedBy }: { initial: Values; usedBy: s
             name="cornerType"
             aria-label="Jenis skrup sudut"
             defaultValue={initial.cornerType}
+            list="screw-materials"
             placeholder='Jenis, mis. Skrup 8 × 1"'
             className="input"
           />
@@ -88,6 +89,7 @@ export function ScrewGroupForm({ initial, usedBy }: { initial: Values; usedBy: s
             name="jointType"
             aria-label="Jenis skrup divider"
             defaultValue={initial.jointType}
+            list="screw-materials"
             placeholder='Jenis, mis. Skrup 8 × 3/4"'
             className="input"
           />

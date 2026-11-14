@@ -84,6 +84,25 @@ export function validateDoor(spec: DoorSpec, frame: FrameProfile, handle: Handle
     ...checkDividers(spec.vDividers, g.inner.left, g.inner.right, frame.faceWidth, "vDividers", "Divider vertikal"),
     ...checkDividers(spec.hDividers, g.inner.bottom, g.inner.top, frame.faceWidth, "hDividers", "Divider horizontal"),
   );
+  const cutback = frame.intersectionCutback ?? 0;
+  if (cutback > 0 && (spec.vDividers.length || spec.hDividers.length)) {
+    const half = frame.faceWidth / 2;
+    const xs = [
+      g.inner.left,
+      ...[...spec.vDividers].sort((a, b) => a - b).flatMap((x) => [x - half, x + half]),
+      g.inner.right,
+    ];
+    const shortest = Math.min(
+      ...(spec.vDividers.length ? [g.inner.top - g.inner.bottom] : []),
+      ...(spec.hDividers.length ? xs.flatMap((x, i) => (i % 2 === 0 ? [xs[i + 1] - x] : [])) : []),
+    );
+    if (shortest - 2 * cutback < 20) {
+      issues.push({
+        field: "vDividers",
+        message: `Ruas divider terlalu pendek setelah intersection cutback ${cutback} mm`,
+      });
+    }
+  }
   if (spec.doorType === "swing" && spec.handleSide === "both") {
     issues.push({ field: "handleSide", message: "Pintu swing hanya bisa satu sisi gagang (kiri atau kanan)" });
   }
@@ -141,12 +160,14 @@ export function decomposeDoor(spec: DoorSpec, frame: FrameProfile, handle: Handl
   const vSorted = [...spec.vDividers].sort((a, b) => a - b);
   const hSorted = [...spec.hDividers].sort((a, b) => a - b);
   const half = frame.faceWidth / 2;
+  // Divider dipendekkan di kedua ujung pertemuan (intersection cutback material frame).
+  const cut2 = 2 * (frame.intersectionCutback ?? 0);
 
   vSorted.forEach((_, i) => {
     pieces.push({
       id: `v${i + 1}`,
       label: `Divider vertikal ${i + 1}`,
-      length: g.inner.top - g.inner.bottom,
+      length: g.inner.top - g.inner.bottom - cut2,
       angle: "straight",
       stock: frameStock,
     });
@@ -160,7 +181,7 @@ export function decomposeDoor(spec: DoorSpec, frame: FrameProfile, handle: Handl
       pieces.push({
         id: `h${i + 1}${suffix}`,
         label: `Divider horizontal ${i + 1}${suffix}`,
-        length: Math.round((bounds[s + 1] - bounds[s]) * 10) / 10,
+        length: Math.round((bounds[s + 1] - bounds[s] - cut2) * 10) / 10,
         angle: "straight",
         stock: frameStock,
       });

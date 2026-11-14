@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useActionState, useState } from "react";
-import { FieldError, FormAlert, ScrewGroupSelect, type GroupOption } from "@/components/admin-ui";
+import { FieldError, FormAlert, MaterialSelect, ScrewGroupSelect, type GroupOption } from "@/components/admin-ui";
 import { saveFrame, type FormState } from "../actions";
 
 export type FrameFormValues = {
@@ -13,6 +13,7 @@ export type FrameFormValues = {
   barLength: number | null;
   faceWidth: number;
   screwGroupId: number | null;
+  materialId: number | null;
   active: boolean;
 };
 
@@ -20,10 +21,12 @@ export function FrameForm({
   initial,
   defaultBarLength,
   screwGroups,
+  materials,
 }: {
   initial: FrameFormValues;
   defaultBarLength: number;
   screwGroups: GroupOption[];
+  materials: GroupOption[];
 }) {
   const [state, action, pending] = useActionState<FormState, FormData>(saveFrame.bind(null, initial.id), undefined);
   const [color, setColor] = useState(initial.color);
@@ -106,6 +109,11 @@ export function FrameForm({
       </div>
 
       <ScrewGroupSelect groups={screwGroups} value={initial.screwGroupId} />
+      <MaterialSelect
+        materials={materials}
+        value={initial.materialId}
+        hint="Material profil: harga, minimal beli, glass deduction, dan intersection cutback."
+      />
 
       <label className="flex items-center gap-2 text-sm">
         <input

@@ -7,6 +7,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { db, schema } from "@/db";
 import { requireUser } from "@/lib/auth";
+import { MATERIAL_CATEGORIES, type MaterialCategory } from "@/lib/engine/types";
 
 export type FormState = { error?: string; fieldErrors?: Record<string, string>; ok?: boolean } | undefined;
 
@@ -15,6 +16,8 @@ const optionalLength = z.preprocess(
   (v) => (v === "" || v == null ? null : v),
   z.coerce.number().int().min(500, "Minimal 500 mm").max(12000, "Maksimal 12000 mm").nullable(),
 );
+
+const optionalId = z.preprocess((v) => (v === "" || v == null ? null : v), z.coerce.number().int().nullable());
 
 function fail(error: z.ZodError): FormState {
   const fieldErrors: Record<string, string> = {};
@@ -34,7 +37,8 @@ const frameSchema = z.object({
   color: hex,
   barLength: optionalLength,
   faceWidth: z.coerce.number().int().min(5, "Minimal 5 mm").max(300, "Maksimal 300 mm"),
-  screwGroupId: z.preprocess((v) => (v === "" || v == null ? null : v), z.coerce.number().int().nullable()),
+  screwGroupId: optionalId,
+  materialId: optionalId,
   active: z.preprocess((v) => v === "on", z.boolean()),
 });
 
@@ -148,6 +152,7 @@ export async function deleteScrewGroup(id: number) {
 const hingeTypeSchema = z.object({
   name: z.string().trim().min(1, "Nama wajib diisi"),
   length: z.coerce.number().int().min(20, "Minimal 20 mm").max(500, "Maksimal 500 mm"),
+  materialId: optionalId,
   active: z.preprocess((v) => v === "on", z.boolean()),
 });
 
@@ -164,6 +169,51 @@ export async function saveHingeType(id: number | null, _: FormState, formData: F
 export async function deleteHingeType(id: number) {
   await requireUser("admin");
   await db.delete(schema.hingeTypes).where(eq(schema.hingeTypes.id, id));
+  refresh();
+}
+
+// ---------- Material ----------
+
+const optionalText = z
+  .string()
+  .trim()
+  .optional()
+  .transform((v) => v || null);
+const materialSchema = z.object({
+  name: z.string().trim().min(1, "Nama wajib diisi"),
+  sku: optionalText,
+  code: optionalText,
+  category: z.enum(Object.keys(MATERIAL_CATEGORIES) as [MaterialCategory, ...MaterialCategory[]], {
+    message: "Pilih kategori",
+  }),
+  unit: z.string().trim().min(1, "Satuan wajib diisi").max(20),
+  minPurchase: z.coerce.number().positive("Harus lebih dari 0").max(1_000_000),
+  price: z.coerce.number().min(0, "Tidak boleh negatif"),
+  usagePerPoint: z.coerce.number().positive("Harus lebih dari 0").max(1000).default(1),
+  glassDeduction: z.coerce.number().min(-50, "Minimal -50 mm").max(100, "Maksimal 100 mm").default(0),
+  intersectionCutback: z.coerce.number().min(0, "Tidak boleh negatif").max(100, "Maksimal 100 mm").default(0),
+  note: optionalText,
+  active: z.preprocess((v) => v === "on", z.boolean()),
+});
+
+export async function saveMaterial(id: number | null, _: FormState, formData: FormData): Promise<FormState> {
+  await requireUser("admin");
+  const parsed = materialSchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) return fail(parsed.error);
+  const data = parsed.data;
+  if (data.sku) {
+    const dup = await db.query.materials.findFirst({ where: eq(schema.materials.sku, data.sku) });
+    if (dup && dup.id !== id)
+      return { error: "SKU sudah dipakai material lain", fieldErrors: { sku: "Sudah dipakai" } };
+  }
+  if (id) await db.update(schema.materials).set(data).where(eq(schema.materials.id, id));
+  else await db.insert(schema.materials).values(data);
+  redirect("/admin/material");
+}
+
+export async function deleteMaterial(id: number) {
+  await requireUser("admin");
+  await db.delete(schema.materials).where(eq(schema.materials.id, id));
   refresh();
 }
 

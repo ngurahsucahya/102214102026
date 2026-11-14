@@ -40,3 +40,8 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# local notes & workspace
+2026-10-14-133847-saya-ingin-membuat-web-untuk-usaha-custom-pintu.txt
+web-pintu.code-workspace
+MUROVA MATERIAL*.xlsx

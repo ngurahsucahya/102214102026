@@ -18,6 +18,7 @@ import type {
   FrameProfile,
   HandleProfile,
   HandleZone,
+  MaterialCategory,
 } from "@/lib/engine/types";
 
 export const roleEnum = pgEnum("role", ["admin", "field"]);
@@ -42,6 +43,32 @@ export const settings = pgTable("settings", {
   glassInset: real("glass_inset").notNull().default(0),
 });
 
+/**
+ * Katalog material (dari daftar barang MUROVA): harga, satuan, dan minimal beli untuk BOM.
+ * Glass deduction dan intersection cutback dipakai kalau material ini profil batang.
+ */
+export const materials = pgTable("materials", {
+  id: serial("id").primaryKey(),
+  sku: text("sku").unique(),
+  code: text("code"),
+  name: text("name").notNull(),
+  category: text("category").$type<MaterialCategory>().notNull().default("lainnya"),
+  unit: text("unit").notNull().default("pcs"),
+  /** Minimal beli sekaligus kelipatan beli. */
+  minPurchase: real("min_purchase").notNull().default(1),
+  /** Harga per satuan (Rp). */
+  price: real("price").notNull().default(0),
+  usagePerPoint: real("usage_per_point").notNull().default(1),
+  glassDeduction: real("glass_deduction").notNull().default(0),
+  intersectionCutback: real("intersection_cutback").notNull().default(0),
+  /** Catatan kemasan pabrik, mis. "1 CASE = 10 PC". */
+  note: text("note"),
+  active: boolean("active").notNull().default(true),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+const materialRef = () => integer("material_id").references((): AnyPgColumn => materials.id, { onDelete: "set null" });
+
 /** Kelompok skrup: jenis dan jumlah per sudut frame dan per ujung divider. */
 export const screwGroups = pgTable("screw_groups", {
   id: serial("id").primaryKey(),
@@ -59,6 +86,7 @@ export const hingeTypes = pgTable("hinge_types", {
   name: text("name").notNull(),
   /** Tinggi daun engsel (mm). */
   length: integer("length").notNull().default(100),
+  materialId: materialRef(),
   active: boolean("active").notNull().default(true),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
@@ -72,6 +100,7 @@ export const frameProfiles = pgTable("frame_profiles", {
   barLength: integer("bar_length"),
   faceWidth: integer("face_width").notNull().default(40),
   screwGroupId: integer("screw_group_id").references(() => screwGroups.id, { onDelete: "set null" }),
+  materialId: materialRef(),
   active: boolean("active").notNull().default(true),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
@@ -85,6 +114,7 @@ export const handleProfiles = pgTable("handle_profiles", {
   faceWidth: integer("face_width").notNull().default(45),
   screwGroupId: integer("screw_group_id").references(() => screwGroups.id, { onDelete: "set null" }),
   zones: jsonb("zones").$type<HandleZone[]>().notNull().default([]),
+  materialId: materialRef(),
   remainderFrameProfileId: integer("remainder_frame_profile_id").references((): AnyPgColumn => frameProfiles.id, {
     onDelete: "set null",
   }),

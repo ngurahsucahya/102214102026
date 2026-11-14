@@ -4,7 +4,7 @@ import { Suspense } from "react";
 import { PageHeader, Skeleton } from "@/components/admin-ui";
 import { db, schema } from "@/db";
 import { requireUser } from "@/lib/auth";
-import { getSettings, listScrewGroups } from "@/lib/data";
+import { getSettings, listMaterialOptions, listScrewGroups } from "@/lib/data";
 import { FrameForm } from "../frame-form";
 
 export default function EditFramePage({ params }: PageProps<"/admin/frame/[id]">) {
@@ -28,5 +28,13 @@ async function Content({ params }: { params: Promise<{ id: string }> }) {
     listScrewGroups(),
   ]);
   if (!frame) notFound();
-  return <FrameForm defaultBarLength={settings.defaultBarLength} screwGroups={screwGroups} initial={frame} />;
+  const materials = await listMaterialOptions("profil", frame.materialId);
+  return (
+    <FrameForm
+      defaultBarLength={settings.defaultBarLength}
+      screwGroups={screwGroups}
+      materials={materials}
+      initial={frame}
+    />
+  );
 }

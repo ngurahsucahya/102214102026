@@ -1,7 +1,7 @@
 import { Suspense } from "react";
 import { PageHeader, Skeleton } from "@/components/admin-ui";
 import { requireUser } from "@/lib/auth";
-import { getSettings, listFrames, listScrewGroups } from "@/lib/data";
+import { getSettings, listFrames, listMaterialOptions, listScrewGroups } from "@/lib/data";
 import { HandleForm } from "../handle-form";
 
 export default function NewHandlePage() {
@@ -17,12 +17,18 @@ export default function NewHandlePage() {
 
 async function Content() {
   await requireUser("admin");
-  const [settings, frames, screwGroups] = await Promise.all([getSettings(), listFrames(), listScrewGroups()]);
+  const [settings, frames, screwGroups, materials] = await Promise.all([
+    getSettings(),
+    listFrames(),
+    listScrewGroups(),
+    listMaterialOptions("profil"),
+  ]);
   return (
     <HandleForm
       defaultBarLength={settings.defaultBarLength}
       frames={frames}
       screwGroups={screwGroups}
+      materials={materials}
       initial={{
         id: null,
         name: "",
@@ -31,6 +37,7 @@ async function Content() {
         barLength: null,
         faceWidth: 45,
         screwGroupId: null,
+        materialId: null,
         zones: [{ start: settings.defaultBarLength / 2 - 100, length: 200 }],
         remainderFrameProfileId: null,
         active: true,

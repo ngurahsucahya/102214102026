@@ -6,14 +6,15 @@ import { useEffect, useMemo, useRef, useState, useTransition, type ReactNode } f
 import { saveBulk } from "@/app/lapangan/actions";
 import { useUnit } from "@/components/unit-context";
 import type { CalcCatalog } from "@/lib/data";
-import { bulkPrefix, bulkUnitName, calculateBulk, CalcError } from "@/lib/engine";
+import { bomFromBulk, bulkPrefix, bulkUnitName, calculateBulk, CalcError } from "@/lib/engine";
 import type { BulkItem, BulkResult, ValidationIssue } from "@/lib/engine/types";
 import { formatLength, type Unit } from "@/lib/units";
-import { BulkGlassTable } from "./accessory-tables";
+import { qtyText } from "@/lib/format";
+import { BomTable, BulkGlassTable } from "./accessory-tables";
 import { BarPlanView, piecesForUnit } from "./bar-plan-view";
 import { useBulk } from "./bulk-store";
 import { DoorCanvas } from "./door-canvas";
-import { BulkWorkshopSheet } from "./print-sheets";
+import { BomSheet, BulkWorkshopSheet } from "./print-sheets";
 import { specLine } from "./spec-line";
 
 export function bulkShareText(result: BulkResult, unit: Unit, label?: string) {
@@ -38,6 +39,9 @@ export function bulkShareText(result: BulkResult, unit: Unit, label?: string) {
     lines.push("", "*Skrup:*", ...result.screws.map((l) => `• ${l.type}: ${l.qty} pcs`));
   }
   if (result.hinges.length) lines.push("", "*Engsel:*", ...result.hinges.map((h) => `• ${h.name}: ${h.qty} pcs`));
+  if (result.components?.length) {
+    lines.push("", "*Komponen:*", ...result.components.map((c) => `• ${c.name}: ${qtyText(c.qty)} ${c.unit}`));
+  }
   return lines.join("\n");
 }
 
@@ -48,7 +52,14 @@ export function BulkView({ catalog }: { catalog: CalcCatalog }) {
     if (!items.length) return { result: null, issues: [] };
     try {
       return {
-        result: calculateBulk(items, catalog.frames, catalog.handles, catalog.settings, catalog.hingeTypes),
+        result: calculateBulk(
+          items,
+          catalog.frames,
+          catalog.handles,
+          catalog.settings,
+          catalog.hingeTypes,
+          catalog.materials,
+        ),
         issues: [],
       };
     } catch (e) {
@@ -183,7 +194,7 @@ export function BulkResultPanel({
   const saved = savedKey === itemsKey;
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
-  const [printing, setPrinting] = useState<"bengkel" | "konsumen" | null>(null);
+  const [printing, setPrinting] = useState<"bengkel" | "konsumen" | "bom" | null>(null);
   const [hovered, setHovered] = useState<string | null>(null);
   const [pinned, setPinned] = useState<string | null>(null);
   const unitRefs = useRef(new Map<string, HTMLElement>());
@@ -227,6 +238,7 @@ export function BulkResultPanel({
   };
 
   const saving = result ? result.separateBars - result.stats.totalNewBars : 0;
+  const bom = useMemo(() => bomFromBulk(result, catalog), [result, catalog]);
 
   return (
     <>
@@ -234,6 +246,14 @@ export function BulkResultPanel({
         <div className="hidden print:block">
           {printing === "konsumen" && customerSheet ? (
             customerSheet(label)
+          ) : printing === "bom" ? (
+            <BomSheet
+              bom={bom}
+              label={label}
+              doors={result.doors.map(
+                (d) => `${d.code}${d.label ? ` ${d.label}` : ""} · ${specLine(d.spec, unit)} · ${d.qty} unit`,
+              )}
+            />
           ) : (
             <BulkWorkshopSheet catalog={catalog} result={result} label={label} unit={unit} />
           )}
@@ -364,7 +384,7 @@ export function BulkResultPanel({
             </div>
           </div>
           <div className="min-w-0 space-y-2">
-            <h2 className="text-lg font-semibold">Skrup & engsel</h2>
+            <h2 className="text-lg font-semibold">Skrup, engsel & komponen</h2>
             <div className="card overflow-x-auto">
               <table className="w-full text-sm">
                 <tbody>
@@ -383,15 +403,36 @@ export function BulkResultPanel({
                       <td className="td text-right font-semibold whitespace-nowrap tabular-nums">{h.qty} pcs</td>
                     </tr>
                   ))}
-                  {!result.screws.length && !result.hinges.length && (
+                  {(result.components ?? []).map((c) => (
+                    <tr key={`${c.kind}${c.materialId}`}>
+                      <td className="td">
+                        {c.name}
+                        <div className="text-xs text-muted">{c.detail}</div>
+                      </td>
+                      <td className="td text-right font-semibold whitespace-nowrap tabular-nums">
+                        {qtyText(c.qty)} {c.unit}
+                      </td>
+                    </tr>
+                  ))}
+                  {!result.screws.length && !result.hinges.length && !result.components?.length && (
                     <tr>
-                      <td className="td text-muted">Tidak ada skrup atau engsel.</td>
+                      <td className="td text-muted">Tidak ada skrup, engsel, atau komponen.</td>
                     </tr>
                   )}
                 </tbody>
               </table>
             </div>
           </div>
+        </section>
+
+        <section className="space-y-2">
+          <h2 className="text-lg font-semibold">Bill of material (BOM)</h2>
+          <div className="card overflow-x-auto">
+            <BomTable bom={bom} />
+          </div>
+          <p className="text-xs text-muted">
+            Material dibeli gabungan untuk semua pintu, jadi pembulatan minimal beli hanya terjadi sekali per barang.
+          </p>
         </section>
 
         <section className="card p-4">
@@ -437,6 +478,9 @@ export function BulkResultPanel({
               )}
               <button className="btn" onClick={() => setPrinting("bengkel")}>
                 <Printer className="size-4" /> {customerSheet ? "Untuk bengkel" : "Cetak untuk bengkel"}
+              </button>
+              <button className="btn" onClick={() => setPrinting("bom")}>
+                <Printer className="size-4" /> BOM
               </button>
             </div>
           </div>

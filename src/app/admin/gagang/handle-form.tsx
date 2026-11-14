@@ -3,7 +3,7 @@
 import { Plus, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useActionState, useRef, useState } from "react";
-import { FieldError, FormAlert, ScrewGroupSelect, type GroupOption } from "@/components/admin-ui";
+import { FieldError, FormAlert, MaterialSelect, ScrewGroupSelect, type GroupOption } from "@/components/admin-ui";
 import type { HandleZone } from "@/lib/engine/types";
 import { saveHandle, type FormState } from "../actions";
 
@@ -15,6 +15,7 @@ export type HandleFormValues = {
   barLength: number | null;
   faceWidth: number;
   screwGroupId: number | null;
+  materialId: number | null;
   zones: HandleZone[];
   remainderFrameProfileId: number | null;
   active: boolean;
@@ -29,11 +30,13 @@ export function HandleForm({
   defaultBarLength,
   frames,
   screwGroups,
+  materials,
 }: {
   initial: HandleFormValues;
   defaultBarLength: number;
   frames: FrameOption[];
   screwGroups: GroupOption[];
+  materials: GroupOption[];
 }) {
   const [state, action, pending] = useActionState<FormState, FormData>(saveHandle.bind(null, initial.id), undefined);
   const [color, setColor] = useState(initial.color);
@@ -133,6 +136,11 @@ export function HandleForm({
           </div>
         </div>
         <ScrewGroupSelect groups={screwGroups} value={initial.screwGroupId} />
+        <MaterialSelect
+          materials={materials}
+          value={initial.materialId}
+          hint="Material profil: harga, minimal beli, glass deduction, dan intersection cutback."
+        />
         <div>
           <label className="label" htmlFor="remainderFrameProfileId">
             Sisa batang bisa dipakai jadi frame

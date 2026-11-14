@@ -1,11 +1,12 @@
 "use client";
 
-import { DoorOpen, Gauge, Grip, PanelsTopLeft, Settings, Users, Wrench } from "lucide-react";
+import { DoorOpen, Gauge, Grip, Package, PanelsTopLeft, Settings, Users, Wrench } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 const items = [
   { href: "/admin", label: "Dashboard", icon: Gauge },
+  { href: "/admin/material", label: "Material", icon: Package },
   { href: "/admin/frame", label: "Batang Frame", icon: PanelsTopLeft },
   { href: "/admin/gagang", label: "Batang Gagang", icon: Grip },
   { href: "/admin/skrup", label: "Kelompok Skrup", icon: Wrench },

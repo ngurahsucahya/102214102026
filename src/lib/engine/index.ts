@@ -1,4 +1,4 @@
-import { computeGlass, computeScrews } from "./accessories";
+import { computeComponents, computeGlass, computeScrews } from "./accessories";
 import { decomposeDoor, validateDoor, validateHinges } from "./decompose";
 import { planCuts } from "./plan";
 import { hingeSide } from "./sides";
@@ -7,18 +7,21 @@ import {
   type BulkItem,
   type BulkResult,
   type CalcResult,
+  type ComponentLine,
   type CalcSettings,
   type DoorSpec,
   type FrameProfile,
   type HandleProfile,
   type HingeType,
+  type Material,
   type ScrewLine,
 } from "./types";
 
 export * from "./types";
 export { decomposeDoor, doorGeometry, validateDoor, validateHinges } from "./decompose";
 export * from "./sides";
-export { screwJoints } from "./accessories";
+export { dividerEnds, screwJoints } from "./accessories";
+export { buildBom, bomFromBulk, bomFromResult, type BomCatalog } from "./bom";
 export { clampToRanges, feasibleHandleRanges } from "./handle";
 export { cutAllowance } from "./plan";
 
@@ -49,18 +52,21 @@ export function calculate(
   handles: HandleProfile[],
   settings: CalcSettings,
   hingeTypes: HingeType[] = [],
+  materials: Material[] = [],
 ): CalcResult {
   const { frame, handle } = resolveProfiles(spec, frames, handles);
   const issues = [...validateDoor(spec, frame, handle), ...validateHinges(spec, hingeTypes)];
   if (issues.length) throw new CalcError(issues);
 
   const pieces = decomposeDoor(spec, frame, handle);
+  const glass = computeGlass(spec, frame, handle, settings);
   return {
     pieces,
     ...planCuts(pieces, frames, handles, settings),
-    glass: computeGlass(spec, frame, handle, settings),
+    glass,
     hinges: hingeResult(spec, hingeTypes),
     screws: computeScrews(spec, frame, handle),
+    components: computeComponents(spec, glass, materials),
   };
 }
 
@@ -80,6 +86,7 @@ export function calculateBulk(
   handles: HandleProfile[],
   settings: CalcSettings,
   hingeTypes: HingeType[] = [],
+  materials: Material[] = [],
 ): BulkResult {
   if (!items.length) throw new CalcError([{ field: "bulk", message: "Bulk masih kosong" }]);
 
@@ -87,7 +94,7 @@ export function calculateBulk(
     const code = `P${i + 1}`;
     let single: CalcResult;
     try {
-      single = calculate(item.spec, frames, handles, settings, hingeTypes);
+      single = calculate(item.spec, frames, handles, settings, hingeTypes, materials);
     } catch (e) {
       if (e instanceof CalcError) {
         throw new CalcError(e.issues.map((iss) => ({ ...iss, message: `${code}: ${iss.message}` })));
@@ -111,7 +118,8 @@ export function calculateBulk(
   );
 
   const screwMap = new Map<string, ScrewLine>();
-  const hingeMap = new Map<string, number>();
+  const hingeMap = new Map<string, { name: string; qty: number; typeId: number }>();
+  const compMap = new Map<string, ComponentLine>();
   for (const d of doors) {
     for (const l of d.single.screws) {
       const line = screwMap.get(l.type) ?? { type: l.type, qty: 0, detail: [] };
@@ -121,7 +129,16 @@ export function calculateBulk(
     }
     if (d.single.hinges) {
       const h = d.single.hinges;
-      hingeMap.set(h.name, (hingeMap.get(h.name) ?? 0) + h.positions.length * d.qty);
+      const row = hingeMap.get(h.name) ?? { name: h.name, qty: 0, typeId: h.typeId };
+      row.qty += h.positions.length * d.qty;
+      hingeMap.set(h.name, row);
+    }
+    for (const c of d.single.components ?? []) {
+      const key = `${c.kind}:${c.materialId}`;
+      const row = compMap.get(key) ?? { ...c, qty: 0, detail: "" };
+      row.qty = Math.round((row.qty + c.qty * d.qty) * 10) / 10;
+      row.detail = [row.detail, `${d.code}: ${c.qty}${d.qty > 1 ? ` × ${d.qty}` : ""}`].filter(Boolean).join(" · ");
+      compMap.set(key, row);
     }
   }
 
@@ -130,6 +147,7 @@ export function calculateBulk(
     doors,
     separateBars: doors.reduce((s, d) => s + d.single.stats.totalNewBars * d.qty, 0),
     screws: [...screwMap.values()],
-    hinges: [...hingeMap.entries()].map(([name, qty]) => ({ name, qty })),
+    hinges: [...hingeMap.values()],
+    components: [...compMap.values()],
   };
 }

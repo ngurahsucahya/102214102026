@@ -1,7 +1,21 @@
 import "dotenv/config";
 import bcrypt from "bcryptjs";
-import { isNull } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { db, schema } from "../src/db";
+import { extraMaterials, murovaMaterials, murovaQuotationMaterials } from "./seed-data/materials";
+
+/** Batang & engsel contoh → material katalog (dihubungkan hanya kalau belum terhubung). */
+const PROFILE_MATERIAL: Record<string, string> = {
+  "FR-4S": "DMY-PRF-FR4S",
+  "FR-4H": "DMY-PRF-FR4H",
+  "FR-SC": "DMY-PRF-FRSC",
+  "GG-1S": "DMY-PRF-GG1S",
+  "GG-2H": "DMY-PRF-GG2H",
+};
+const HINGE_MATERIAL: Record<string, string> = {
+  'Engsel 4" Stainless': "DMY-ENG-4SS",
+  'Engsel 5" Heavy Duty': "DMY-ENG-5HD",
+};
 
 async function main() {
   await db.insert(schema.settings).values({ id: 1 }).onConflictDoNothing();
@@ -79,6 +93,56 @@ async function main() {
       { name: 'Engsel 5" Heavy Duty', length: 125 },
     ]);
   }
+
+  // Katalog material: tambah yang belum ada (berdasarkan SKU), data yang sudah diubah admin tidak ditimpa.
+  const seedMaterials = [...murovaMaterials, ...murovaQuotationMaterials, ...extraMaterials];
+  await db
+    .insert(schema.materials)
+    .values(seedMaterials.map((m) => ({ ...m, code: m.code ?? null, note: m.note ?? null })))
+    .onConflictDoNothing({ target: schema.materials.sku });
+  const materialRows = await db.select({ id: schema.materials.id, sku: schema.materials.sku }).from(schema.materials);
+  const materialId = (sku: string) => materialRows.find((m) => m.sku === sku)?.id ?? null;
+
+  for (const [code, sku] of Object.entries(PROFILE_MATERIAL)) {
+    const id = materialId(sku);
+    if (!id) continue;
+    await db
+      .update(schema.frameProfiles)
+      .set({ materialId: id })
+      .where(and(eq(schema.frameProfiles.code, code), isNull(schema.frameProfiles.materialId)));
+    await db
+      .update(schema.handleProfiles)
+      .set({ materialId: id })
+      .where(and(eq(schema.handleProfiles.code, code), isNull(schema.handleProfiles.materialId)));
+  }
+  for (const [name, sku] of Object.entries(HINGE_MATERIAL)) {
+    const id = materialId(sku);
+    if (!id) continue;
+    await db
+      .update(schema.hingeTypes)
+      .set({ materialId: id })
+      .where(and(eq(schema.hingeTypes.name, name), isNull(schema.hingeTypes.materialId)));
+  }
+  if (!(await db.query.hingeTypes.findFirst({ where: eq(schema.hingeTypes.name, "Engsel Pivot Pintu Kaca") }))) {
+    await db
+      .insert(schema.hingeTypes)
+      .values({ name: "Engsel Pivot Pintu Kaca", length: 80, materialId: materialId("DMY-ENG-PVT") });
+  }
+
+  // Satu batang frame dari katalog MUROVA supaya bisa langsung dicoba di kalkulator.
+  if (!(await db.query.frameProfiles.findFirst({ where: eq(schema.frameProfiles.code, "A201-40") }))) {
+    const group = await db.query.screwGroups.findFirst();
+    await db.insert(schema.frameProfiles).values({
+      name: "MUROVA A201-40 Copper",
+      code: "A201-40",
+      color: "#b87333",
+      barLength: 3000,
+      faceWidth: 40,
+      screwGroupId: group?.id ?? null,
+      materialId: materialId("80FHAOPB2001-A201-40-3M"),
+    });
+  }
+  console.log(`Material: ${materialRows.length} barang di katalog.`);
 
   console.log("Seed selesai. Login: admin/admin123 dan lapangan/lapangan123");
   process.exit(0);

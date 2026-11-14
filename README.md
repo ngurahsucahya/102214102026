@@ -36,12 +36,18 @@ Kode engine ada di `src/lib/engine`. Engine ini TypeScript murni, dipakai di bro
 3. **Optimasi potong** (`pack.ts`): exact search (branch & bound) untuk jumlah batang baru paling sedikit. Sisa batang gagang (tanpa zona gagang) dipakai dulu jika admin mengizinkan. Kalau jumlah batangnya sama, dipilih susunan dengan sisa yang paling terkumpul.
 4. **Kerf** dihitung per potongan, dengan potongan 45° dikali √2. Ujung batang bisa dibuang (end trim). Sisa di bawah batas minimum dianggap buangan.
 
-5. **Kaca** (`accessories.ts`): bukaan = ukuran pintu dikurangi tebal frame, tebal gagang, dan tebal divider. Ukuran potong kaca = bukaan + 2 × "kaca masuk alur" (pengaturan admin).
+5. **Kaca** (`accessories.ts`): bukaan = ukuran pintu dikurangi tebal frame, tebal gagang, dan tebal divider. Ukuran potong kaca = bukaan + 2 × "kaca masuk alur" (pengaturan admin) − **glass deduction** material profil di tiap sisi yang menutup kaca (sisi gagang memakai material gagang, divider memakai material frame).
 6. **Skrup** (`accessories.ts`): tiap batang punya kelompok skrup (jenis + jumlah per sudut frame, jenis + jumlah per ujung divider). 2 sudut di sisi gagang memakai kelompok batang gagang (kalau kosong ikut frame). 2 sudut lain dan semua ujung divider memakai kelompok frame. Hasilnya dijumlahkan per jenis skrup.
 
 7. **Tipe pintu**: *swing* punya gagang di kiri atau kanan, dan engselnya ada di sisi seberang gagang (jenis dari admin; jumlah dan posisi diatur petugas, awalnya dibagi rata 200 mm dari bawah dan atas). *Slider* tidak memakai engsel, dan gagangnya bisa di kiri, kanan, atau keduanya (dua frame gagang).
 8. **Tampak belakang** (`screwJoints`): gambar dicerminkan dan menampilkan titik skrup per sambungan. Total titik selalu sama dengan tabel skrup.
 
 9. **Bulk** (`calculateBulk`): beberapa pintu (masing-masing bisa beberapa unit) dihitung bersama. Semua potongan digabung ke satu rencana potong, jadi sisa batang satu pintu dipakai pintu lain. Hasilnya dibandingkan dengan jumlah batang kalau tiap unit dihitung terpisah. Draf bulk disimpan di browser, dan setelah disimpan masuk ke riwayat (`bulk_calculations`).
+
+10. **Material** (menu admin *Material*): katalog barang dengan harga, satuan, dan **minimal beli**. Batang frame, batang gagang, dan engsel dihubungkan ke material. Profil punya **glass deduction** (lihat no. 5) dan **intersection cutback**: divider dipotong lebih pendek sebanyak itu di tiap ujung pertemuan.
+11. **Komponen** (langkah terakhir petugas lapangan): *seal* = keliling semua kaca × jalur per sisi kaca (m), *corner connector* = 4 sudut × jumlah per sudut, *pin ambalan* = jumlah ujung divider × jumlah per ujung.
+12. **BOM** (`bom.ts`): batang, skrup, engsel, dan komponen digabung per material, lalu dibulatkan ke kelipatan minimal beli (butuh 10, minimal 20 → beli 20; butuh 25 → beli 40). Di bulk, pembulatan dilakukan setelah semua pintu digabung. Skrup terhubung ke material kalau jenis skrup di kelompok skrup sama persis dengan nama material. Kaca belum masuk BOM.
+
+Data seed material dibuat dari file `MUROVA MATERIAL (1).xlsx` (tidak di-commit) ke `scripts/seed-data/materials.ts`. Seed bisa dijalankan ulang: material baru ditambahkan per SKU, data yang sudah diubah admin tidak ditimpa.
 
 Efisiensi material = 1 − waste / total panjang batang. Sisa yang masih berguna tidak dihitung sebagai waste.

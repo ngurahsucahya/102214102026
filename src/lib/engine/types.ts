@@ -23,6 +23,43 @@ export type ScrewGroup = {
   jointQty: number;
 };
 
+/** Kategori material di katalog. */
+export const MATERIAL_CATEGORIES = {
+  profil: "Profil / batang",
+  track: "Track",
+  cover: "Cover",
+  seal: "Seal",
+  corner: "Corner connector",
+  pin: "Pin ambalan",
+  engsel: "Engsel",
+  skrup: "Skrup",
+  roller: "Roller",
+  aksesoris: "Aksesoris",
+  lainnya: "Lainnya",
+} as const;
+export type MaterialCategory = keyof typeof MATERIAL_CATEGORIES;
+
+/** Satu barang di katalog material, dengan harga dan minimal beli. */
+export type Material = {
+  id: number;
+  sku: string | null;
+  code: string | null;
+  name: string;
+  category: MaterialCategory;
+  /** Satuan hitung: pcs, batang, m, set, … */
+  unit: string;
+  /** Minimal beli, juga kelipatan beli (mis. 20 → butuh 25 beli 40). */
+  minPurchase: number;
+  /** Harga per satuan (Rp). */
+  price: number;
+  /** Jumlah per titik pasang: per sudut (corner), per ujung divider (pin), jalur per sisi kaca (seal). */
+  usagePerPoint: number;
+  /** Khusus profil: kaca dipotong lebih kecil sebanyak ini di sisi yang ditutup profil ini (mm). */
+  glassDeduction: number;
+  /** Khusus profil: divider dipotong lebih pendek sebanyak ini di tiap ujung pertemuan (mm). */
+  intersectionCutback: number;
+};
+
 export type FrameProfile = {
   id: number;
   name: string;
@@ -32,6 +69,12 @@ export type FrameProfile = {
   /** Tebal frame (lebar dilihat dari depan): mengurangi bukaan kaca dan panjang divider. */
   faceWidth: number;
   screwGroup: ScrewGroup | null;
+  /** Material katalog untuk BOM (harga, minimal beli). */
+  materialId?: number | null;
+  /** Dari material: potongan kaca per sisi yang ditutup profil ini (mm). */
+  glassDeduction?: number;
+  /** Dari material: pemendekan divider di tiap ujung (mm). */
+  intersectionCutback?: number;
 };
 
 export type HandleZone = {
@@ -51,6 +94,9 @@ export type HandleProfile = {
   zones: HandleZone[];
   /** Sisa batang gagang bisa dipakai sebagai frame profil ini (null = tidak bisa). */
   remainderFrameProfileId: number | null;
+  materialId?: number | null;
+  /** Dari material: potongan kaca di sisi gagang (mm). */
+  glassDeduction?: number;
 };
 
 export type Side = "left" | "right";
@@ -63,6 +109,7 @@ export type HingeType = {
   name: string;
   /** Tinggi daun engsel, untuk gambar dan validasi posisi. */
   length: number;
+  materialId?: number | null;
 };
 
 export type DoorSpec = {
@@ -81,6 +128,10 @@ export type DoorSpec = {
   /** Khusus swing: jenis engsel dan titik tengah tiap engsel dari bawah pintu. */
   hingeTypeId: number | null;
   hinges: number[];
+  /** Komponen dari katalog material (null = tidak dipakai). Kosong di riwayat lama. */
+  sealMaterialId?: number | null;
+  cornerMaterialId?: number | null;
+  pinMaterialId?: number | null;
 };
 
 export type CutAngle = "miter" | "straight";
@@ -141,10 +192,40 @@ export type GlassPanel = {
   /** Ukuran bukaan di antara frame/divider. */
   openingWidth: number;
   openingHeight: number;
-  /** Ukuran potong kaca (bukaan + alur di kedua sisi). */
+  /** Ukuran potong kaca (bukaan + alur di kedua sisi − glass deduction). */
   width: number;
   height: number;
 };
+
+export type ComponentKind = "seal" | "corner" | "pin";
+
+/** Komponen pintu dari katalog: seal, corner connector, pin ambalan. */
+export type ComponentLine = {
+  kind: ComponentKind;
+  materialId: number;
+  name: string;
+  qty: number;
+  unit: string;
+  detail: string;
+};
+
+/** Satu baris BOM: kebutuhan dibulatkan ke minimal beli. */
+export type BomLine = {
+  key: string;
+  materialId: number | null;
+  sku: string | null;
+  code: string | null;
+  name: string;
+  group: string;
+  unit: string;
+  need: number;
+  minPurchase: number;
+  buy: number;
+  price: number;
+  subtotal: number;
+};
+
+export type Bom = { lines: BomLine[]; total: number; unlinked: number };
 
 export type ScrewLine = {
   type: string;
@@ -161,6 +242,8 @@ export type CalcResult = {
   /** null untuk slider. */
   hinges: { typeId: number; name: string; length: number; side: Side; positions: number[] } | null;
   screws: ScrewLine[];
+  /** Kosong di riwayat lama. */
+  components?: ComponentLine[];
   stats: {
     totalNewBars: number;
     materialLength: number;
@@ -193,7 +276,8 @@ export type BulkResult = Pick<CalcResult, "bars" | "summary" | "stats"> & {
   /** Total batang kalau setiap unit pintu dihitung terpisah. */
   separateBars: number;
   screws: ScrewLine[];
-  hinges: { name: string; qty: number }[];
+  hinges: { name: string; qty: number; typeId?: number }[];
+  components?: ComponentLine[];
 };
 
 export type ValidationIssue = { field: string; message: string };

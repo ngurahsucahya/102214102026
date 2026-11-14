@@ -14,7 +14,17 @@ import {
   hingeBottom,
   hingeSide,
 } from "@/lib/engine";
-import type { BulkResult, CalcResult, DoorSpec, DoorType, Segment, ValidationIssue } from "@/lib/engine/types";
+import type {
+  BulkResult,
+  CalcResult,
+  ComponentKind,
+  DoorSpec,
+  DoorType,
+  MaterialCategory,
+  Segment,
+  ValidationIssue,
+} from "@/lib/engine/types";
+import { qtyText, rupiah } from "@/lib/format";
 import { piecesFromResult } from "./bar-plan-view";
 import type { DividerRef } from "./door-canvas";
 import { DoorViews } from "./door-views";
@@ -27,6 +37,7 @@ const ALL_STEPS = [
   { key: "divider", title: "Divider", fields: ["hDividers", "vDividers"] },
   { key: "gagang", title: "Gagang", fields: ["handleHeight", "handleProfileId", "handleSide"] },
   { key: "engsel", title: "Engsel", fields: ["hingeTypeId", "hinges"] },
+  { key: "komponen", title: "Komponen", fields: ["sealMaterialId", "cornerMaterialId", "pinMaterialId"] },
 ] as const;
 
 type StepKey = (typeof ALL_STEPS)[number]["key"];
@@ -88,6 +99,9 @@ export function DoorCalculator({ catalog }: { catalog: CalcCatalog }) {
       handleHeight: 900,
       hDividers: [],
       vDividers: [],
+      sealMaterialId: null,
+      cornerMaterialId: null,
+      pinMaterialId: null,
     };
     return { ...base, handleHeight: clampToRanges(900, rangesFor(catalog, base)) ?? 900 };
   });
@@ -123,7 +137,14 @@ export function DoorCalculator({ catalog }: { catalog: CalcCatalog }) {
   const calc = useMemo((): { result: CalcResult | null; issues: ValidationIssue[] } => {
     try {
       return {
-        result: calculate(deferred, catalog.frames, catalog.handles, catalog.settings, catalog.hingeTypes),
+        result: calculate(
+          deferred,
+          catalog.frames,
+          catalog.handles,
+          catalog.settings,
+          catalog.hingeTypes,
+          catalog.materials,
+        ),
         issues: [],
       };
     } catch (e) {
@@ -141,6 +162,7 @@ export function DoorCalculator({ catalog }: { catalog: CalcCatalog }) {
         catalog.handles,
         catalog.settings,
         catalog.hingeTypes,
+        catalog.materials,
       );
     } catch {
       return null;
@@ -263,6 +285,9 @@ export function DoorCalculator({ catalog }: { catalog: CalcCatalog }) {
             )}
             {stepKey === "gagang" && <HandleStep catalog={catalog} spec={spec} update={update} ranges={handleRanges} />}
             {stepKey === "engsel" && <HingeStep catalog={catalog} spec={spec} update={update} />}
+            {stepKey === "komponen" && (
+              <ComponentStep catalog={catalog} spec={spec} update={update} result={calc.result} />
+            )}
 
             {currentIssues.length > 0 && (
               <ul className="mt-4 space-y-1 rounded-lg bg-danger/10 px-3 py-2 text-sm text-danger" role="alert">
@@ -767,6 +792,91 @@ function HingeStep({ catalog, spec, update }: StepProps & { catalog: CalcCatalog
           Posisi awal dibagi rata: ujung engsel {len(200)} dari bawah dan dari atas. Geser engsel di gambar bila perlu.
         </p>
       )}
+    </div>
+  );
+}
+
+const COMPONENT_FIELDS: {
+  kind: ComponentKind;
+  category: MaterialCategory;
+  field: "sealMaterialId" | "cornerMaterialId" | "pinMaterialId";
+  title: string;
+  hint: string;
+}[] = [
+  { kind: "seal", category: "seal", field: "sealMaterialId", title: "Seal", hint: "Dihitung dari keliling kaca." },
+  {
+    kind: "corner",
+    category: "corner",
+    field: "cornerMaterialId",
+    title: "Corner connector",
+    hint: "Dipasang di 4 sudut frame.",
+  },
+  {
+    kind: "pin",
+    category: "pin",
+    field: "pinMaterialId",
+    title: "Pin ambalan",
+    hint: "Dipasang di tiap ujung divider. Tanpa divider = 0.",
+  },
+];
+
+function ComponentStep({
+  catalog,
+  spec,
+  update,
+  result,
+}: StepProps & { catalog: CalcCatalog; result: CalcResult | null }) {
+  return (
+    <div className="space-y-6">
+      {COMPONENT_FIELDS.map(({ kind, category, field, title, hint }) => {
+        const options = catalog.materials.filter((m) => m.category === category);
+        const value = spec[field] ?? null;
+        const line = result?.components?.find((c) => c.kind === kind);
+        return (
+          <div key={kind}>
+            <div className="mb-1.5 flex items-baseline justify-between gap-2">
+              <div className="label mb-0">{title}</div>
+              {line && (
+                <span className="text-sm font-semibold tabular-nums">
+                  {qtyText(line.qty)} {line.unit}
+                </span>
+              )}
+            </div>
+            <p className="mb-2 text-xs text-muted">{line ? line.detail : hint}</p>
+            {options.length === 0 ? (
+              <p className="rounded-lg border border-dashed border-line p-3 text-sm text-muted">
+                Belum ada material kategori {title.toLowerCase()}. Minta admin menambahkan di menu Material.
+              </p>
+            ) : (
+              <div className="grid gap-2">
+                {options.map((m) => (
+                  <button
+                    key={m.id}
+                    type="button"
+                    onClick={() => update({ [field]: m.id })}
+                    aria-pressed={value === m.id}
+                    className={`option ${value === m.id ? "option-on" : "option-off"}`}
+                  >
+                    <div className="text-sm font-semibold">{m.name}</div>
+                    <div className="text-xs text-muted">
+                      {m.code && `${m.code} · `}
+                      {rupiah(m.price)}/{m.unit} · min. beli {qtyText(m.minPurchase)} {m.unit}
+                    </div>
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  onClick={() => update({ [field]: null })}
+                  aria-pressed={value === null}
+                  className={`option ${value === null ? "option-on" : "option-off"}`}
+                >
+                  <div className="text-sm font-semibold">Tanpa {title.toLowerCase()}</div>
+                </button>
+              </div>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }

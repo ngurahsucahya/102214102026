@@ -1,14 +1,15 @@
 import { sideName } from "@/lib/engine/sides";
 import type { CalcCatalog } from "@/lib/data";
-import { bulkPrefix, bulkUnitName } from "@/lib/engine";
-import type { BulkResult, CalcResult, DoorSpec, FrameProfile, HandleProfile } from "@/lib/engine/types";
+import { bomFromBulk, bulkPrefix, bulkUnitName } from "@/lib/engine";
+import type { Bom, BulkResult, CalcResult, DoorSpec, FrameProfile, HandleProfile } from "@/lib/engine/types";
 import { formatLength, type Unit } from "@/lib/units";
-import { BulkGlassTable, GlassTable, HingeTable, ScrewTable } from "./accessory-tables";
+import { BomTable, BulkGlassTable, ComponentTable, GlassTable, HingeTable, ScrewTable } from "./accessory-tables";
+import { qtyText } from "@/lib/format";
 import { BarPlanView, piecesForUnit, piecesFromResult } from "./bar-plan-view";
 import { DoorCanvas } from "./door-canvas";
 import { DoorViews } from "./door-views";
 
-export type PrintMode = "konsumen" | "bengkel";
+export type PrintMode = "konsumen" | "bengkel" | "bom";
 
 type SheetProps = {
   spec: DoorSpec;
@@ -143,8 +144,29 @@ export function CustomerSheet({ spec, frame, handle, result, label, unit, qty = 
   );
 }
 
+/**
+ * Lembar BOM: daftar belanja material (butuh, minimal beli, beli, harga) tanpa gambar dan rencana potong.
+ * `doors` = baris ringkas pintu yang dihitung.
+ */
+export function BomSheet({ bom, label, doors }: { bom: Bom; label: string; doors: string[] }) {
+  return (
+    <article>
+      <SheetHeader title="Bill of Material" label={label} />
+      <section className="mb-5 text-sm">
+        <div className="font-semibold">Pintu</div>
+        <ul>
+          {doors.map((d, i) => (
+            <li key={i}>{d}</li>
+          ))}
+        </ul>
+      </section>
+      <BomTable bom={bom} compact />
+    </article>
+  );
+}
+
 /** Lembar untuk bengkel: batang yang diambil dan daftar potong per batang. */
-export function WorkshopSheet({ spec, frame, handle, result, label, unit }: SheetProps) {
+export function WorkshopSheet({ spec, frame, handle, result, label, unit, bom }: SheetProps & { bom?: Bom }) {
   const fmt = (mm: number) => formatLength(mm, unit);
   const dividers = dividerLines(spec, unit);
   // Gambar pintu diwarnai sesuai rencana potong.
@@ -223,8 +245,21 @@ export function WorkshopSheet({ spec, frame, handle, result, label, unit }: Shee
               <HingeTable hinges={result.hinges} compact />
             </>
           )}
+          {!!result.components?.length && (
+            <>
+              <h2 className="mt-4 mb-1 text-sm font-semibold">Komponen</h2>
+              <ComponentTable components={result.components} compact />
+            </>
+          )}
         </section>
       </div>
+
+      {bom && (
+        <section className="mt-5 break-inside-avoid">
+          <h2 className="mb-1 text-sm font-semibold">Bill of material</h2>
+          <BomTable bom={bom} compact />
+        </section>
+      )}
 
       <p className="mt-3 text-xs text-muted">
         Panjang potongan 45° diukur di sisi terpanjang. Kerf sudah diperhitungkan.
@@ -378,7 +413,7 @@ export function BulkWorkshopSheet({
           <BulkGlassTable result={result} fmt={fmt} unit={unit} compact />
         </section>
         <section className="text-sm">
-          <h2 className="mb-1 font-semibold">Skrup & engsel</h2>
+          <h2 className="mb-1 font-semibold">Skrup, engsel & komponen</h2>
           <ul>
             {result.screws.map((l) => (
               <li key={l.type} className="flex justify-between border-t border-line py-1.5">
@@ -392,9 +427,22 @@ export function BulkWorkshopSheet({
                 <b className="tabular-nums">{h.qty} pcs</b>
               </li>
             ))}
+            {(result.components ?? []).map((c) => (
+              <li key={`${c.kind}${c.materialId}`} className="flex justify-between border-t border-line py-1.5">
+                <span>{c.name}</span>
+                <b className="tabular-nums">
+                  {qtyText(c.qty)} {c.unit}
+                </b>
+              </li>
+            ))}
           </ul>
         </section>
       </div>
+
+      <section className="mt-5 break-inside-avoid">
+        <h2 className="mb-1 text-sm font-semibold">Bill of material</h2>
+        <BomTable bom={bomFromBulk(result, catalog)} compact />
+      </section>
 
       <p className="mt-3 text-xs text-muted">
         Panjang potongan 45° diukur di sisi terpanjang. Kerf sudah diperhitungkan.

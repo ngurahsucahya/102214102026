@@ -79,4 +79,32 @@ export function ScrewGroupSelect({ groups, value }: { groups: GroupOption[]; val
   );
 }
 
+/** Pilihan material katalog (name="materialId") untuk dihubungkan ke batang atau engsel. */
+export function MaterialSelect({
+  materials,
+  value,
+  hint = "Dipakai untuk harga dan minimal beli di BOM.",
+}: {
+  materials: GroupOption[];
+  value: number | null;
+  hint?: string;
+}) {
+  return (
+    <div>
+      <label className="label" htmlFor="materialId">
+        Material katalog
+      </label>
+      <select id="materialId" name="materialId" defaultValue={value ?? ""} className="input">
+        <option value="">Tidak terhubung</option>
+        {materials.map((m) => (
+          <option key={m.id} value={m.id}>
+            {m.name}
+          </option>
+        ))}
+      </select>
+      <p className="hint">{hint}</p>
+    </div>
+  );
+}
+
 export const mm = (v: number) => `${v.toLocaleString("id-ID")} mm`;

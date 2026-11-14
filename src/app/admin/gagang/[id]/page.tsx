@@ -4,7 +4,7 @@ import { Suspense } from "react";
 import { PageHeader, Skeleton } from "@/components/admin-ui";
 import { db, schema } from "@/db";
 import { requireUser } from "@/lib/auth";
-import { getSettings, listFrames, listScrewGroups } from "@/lib/data";
+import { getSettings, listFrames, listMaterialOptions, listScrewGroups } from "@/lib/data";
 import { HandleForm } from "../handle-form";
 
 export default function EditHandlePage({ params }: PageProps<"/admin/gagang/[id]">) {
@@ -29,11 +29,13 @@ async function Content({ params }: { params: Promise<{ id: string }> }) {
     listScrewGroups(),
   ]);
   if (!handle) notFound();
+  const materials = await listMaterialOptions("profil", handle.materialId);
   return (
     <HandleForm
       defaultBarLength={settings.defaultBarLength}
       frames={frames}
       screwGroups={screwGroups}
+      materials={materials}
       initial={handle}
     />
   );

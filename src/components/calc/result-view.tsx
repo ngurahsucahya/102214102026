@@ -6,15 +6,16 @@ import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { saveCalculation } from "@/app/lapangan/actions";
 import { hingeBottom, sideName } from "@/lib/engine/sides";
 import type { CalcResult, DoorSpec, FrameProfile, HandleProfile } from "@/lib/engine/types";
-import { GlassTable, HingeTable, ScrewTable } from "./accessory-tables";
+import { qtyText } from "@/lib/format";
+import { BomTable, ComponentTable, GlassTable, HingeTable, ScrewTable } from "./accessory-tables";
 import { BarPlanView, piecesFromResult } from "./bar-plan-view";
 import { useBulk } from "./bulk-store";
 import { DoorViews } from "./door-views";
 import { specLine } from "./spec-line";
 import { BulkResultPanel } from "./bulk-view";
 import type { CalcCatalog } from "@/lib/data";
-import { calculateBulk } from "@/lib/engine";
-import { CustomerSheet, WorkshopSheet, type PrintMode } from "./print-sheets";
+import { bomFromResult, calculateBulk } from "@/lib/engine";
+import { BomSheet, CustomerSheet, WorkshopSheet, type PrintMode } from "./print-sheets";
 import { useUnit } from "@/components/unit-context";
 import { formatLength, type Unit } from "@/lib/units";
 
@@ -51,6 +52,10 @@ export function shareText(spec: DoorSpec, result: CalcResult, unit: Unit, label?
   if (result.screws.length) {
     lines.push("", "*Skrup:*");
     for (const l of result.screws) lines.push(`• ${l.type}: ${l.qty} pcs`);
+  }
+  if (result.components?.length) {
+    lines.push("", "*Komponen:*");
+    for (const c of result.components) lines.push(`• ${c.name}: ${qtyText(c.qty)} ${c.unit}`);
   }
   lines.push("", `Efisiensi material: ${Math.round(result.stats.zeroWasteScore * 100)}%`);
   return lines.join("\n");
@@ -129,6 +134,7 @@ export function ResultView({
 
   const leftovers = result.bars.flatMap((b) => b.leftovers.map((l) => ({ bar: b.id, profile: b.profileName, ...l })));
 
+  const bom = useMemo(() => bomFromResult(result, catalog), [result, catalog]);
   const sheetProps = { spec, frame, handle, result, label, unit };
 
   const multi = useMemo(
@@ -140,6 +146,7 @@ export function ResultView({
             catalog.handles,
             catalog.settings,
             catalog.hingeTypes,
+            catalog.materials,
           )
         : null,
     [qty, spec, catalog],
@@ -222,7 +229,13 @@ export function ResultView({
     <>
       {printMode && (
         <div className="hidden print:block">
-          {printMode === "konsumen" ? <CustomerSheet {...sheetProps} /> : <WorkshopSheet {...sheetProps} />}
+          {printMode === "konsumen" ? (
+            <CustomerSheet {...sheetProps} />
+          ) : printMode === "bom" ? (
+            <BomSheet bom={bom} label={label} doors={[specLine(spec, unit)]} />
+          ) : (
+            <WorkshopSheet {...sheetProps} bom={bom} />
+          )}
         </div>
       )}
       <div className="mx-auto max-w-5xl space-y-5 print:hidden">
@@ -336,7 +349,20 @@ export function ResultView({
               </div>
             </section>
           )}
+          <section className="min-w-0 space-y-2">
+            <h2 className="text-lg font-semibold">Komponen</h2>
+            <div className="card overflow-x-auto">
+              <ComponentTable components={result.components ?? []} />
+            </div>
+          </section>
         </div>
+
+        <section className="space-y-2">
+          <h2 className="text-lg font-semibold">Bill of material (BOM)</h2>
+          <div className="card overflow-x-auto">
+            <BomTable bom={bom} />
+          </div>
+        </section>
 
         <section className="space-y-2">
           <div className="flex flex-wrap items-baseline justify-between gap-2">
@@ -432,6 +458,9 @@ export function ResultView({
             </button>
             <button className="btn" onClick={() => setPrintMode("bengkel")}>
               <Printer className="size-4" /> Untuk bengkel
+            </button>
+            <button className="btn" onClick={() => setPrintMode("bom")}>
+              <Printer className="size-4" /> BOM
             </button>
           </div>
         </section>

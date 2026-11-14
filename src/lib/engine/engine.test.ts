@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  bomFromBulk,
+  bomFromResult,
   calculate,
   calculateBulk,
   CalcError,
@@ -9,8 +11,9 @@ import {
   screwJoints,
   type DoorSpec,
 } from "./index";
+import { roundToPurchase } from "./bom";
 import { packItems } from "./pack";
-import type { CalcSettings, FrameProfile, HandleProfile, HingeType, ScrewGroup } from "./types";
+import type { CalcSettings, FrameProfile, HandleProfile, HingeType, Material, ScrewGroup } from "./types";
 
 const settings: CalcSettings = { kerf: 4, endTrim: 0, minUsableOffcut: 300, glassInset: 0 };
 const screws: ScrewGroup = {
@@ -326,5 +329,99 @@ describe("bulk", () => {
         settings,
       ),
     ).toThrowError(/^P2: Tinggi gagang yang bisa/);
+  });
+});
+
+describe("material: glass deduction, intersection cutback, komponen, BOM", () => {
+  const mat = (over: Partial<Material> & Pick<Material, "id" | "name" | "category">): Material => ({
+    sku: null,
+    code: null,
+    unit: "pcs",
+    minPurchase: 1,
+    price: 0,
+    usagePerPoint: 1,
+    glassDeduction: 0,
+    intersectionCutback: 0,
+    ...over,
+  });
+  const materials: Material[] = [
+    mat({ id: 1, name: "Profil frame", category: "profil", unit: "batang", price: 100000 }),
+    mat({ id: 2, name: "Profil gagang", category: "profil", unit: "batang", price: 200000 }),
+    mat({ id: 3, name: "Seal kaca", category: "seal", unit: "m", minPurchase: 50, price: 700, usagePerPoint: 2 }),
+    mat({ id: 4, name: "Corner A507", category: "corner", minPurchase: 20, price: 175 }),
+    mat({ id: 5, name: "Pin ambalan", category: "pin", minPurchase: 50, price: 500, usagePerPoint: 2 }),
+    mat({ id: 6, name: "Skrup 8x1", category: "skrup", minPurchase: 20, price: 150 }),
+  ];
+  const f = { ...frame, materialId: 1, glassDeduction: 3, intersectionCutback: 1 };
+  const h = { ...handle, materialId: 2, glassDeduction: 5 };
+  const withParts = (over: Partial<DoorSpec> = {}) =>
+    door({ sealMaterialId: 3, cornerMaterialId: 4, pinMaterialId: 5, ...over });
+
+  it("glass deduction mengurangi kaca per sisi sesuai profil yang menutupnya", () => {
+    const r = calculate(door({ vDividers: [400] }), [f], [h], settings);
+    const [left, right] = r.glass.panels;
+    // Kiri: frame (3) + divider (3). Kanan: divider (3) + gagang (5). Tinggi: frame atas & bawah (3 + 3).
+    expect(left.width).toBeCloseTo(left.openingWidth - 6);
+    expect(right.width).toBeCloseTo(right.openingWidth - 8);
+    expect(left.height).toBeCloseTo(left.openingHeight - 6);
+  });
+
+  it("intersection cutback memendekkan divider di kedua ujung", () => {
+    const plain = decomposeDoor(door({ vDividers: [400], hDividers: [1000] }), frame, handle);
+    const cut = decomposeDoor(door({ vDividers: [400], hDividers: [1000] }), f, handle);
+    for (const id of ["v1", "h1a", "h1b"]) {
+      expect(cut.find((p) => p.id === id)!.length).toBeCloseTo(plain.find((p) => p.id === id)!.length - 2);
+    }
+    // Frame luar tidak terpengaruh.
+    expect(cut.find((p) => p.id === "top")!.length).toBe(800);
+  });
+
+  it("menghitung seal dari keliling kaca, corner per sudut, pin per ujung divider", () => {
+    const r = calculate(withParts({ hDividers: [1000] }), [f], [h], settings, [], materials);
+    const by = (k: string) => r.components!.find((c) => c.kind === k)!;
+    const perimeter = r.glass.panels.reduce((s, p) => s + 2 * (p.width + p.height), 0) / 1000;
+    expect(by("seal").qty).toBeCloseTo(Math.ceil(perimeter * 2 * 10) / 10);
+    expect(by("corner").qty).toBe(4);
+    expect(by("pin").qty).toBe(2 * 2); // 1 divider horizontal = 2 ujung × 2 pin
+  });
+
+  it("tanpa divider tidak ada pin ambalan; komponen null tidak dihitung", () => {
+    const r = calculate(withParts({ sealMaterialId: null }), [f], [h], settings, [], materials);
+    expect(r.components!.map((c) => c.kind)).toEqual(["corner"]);
+  });
+
+  it("BOM membulatkan ke kelipatan minimal beli", () => {
+    expect(roundToPurchase(10, 20)).toBe(20);
+    expect(roundToPurchase(20, 20)).toBe(20);
+    expect(roundToPurchase(25, 20)).toBe(40);
+    expect(roundToPurchase(4.2, 3.5)).toBe(7);
+    expect(roundToPurchase(0, 20)).toBe(0);
+  });
+
+  it("BOM per pintu: harga, minimal beli, dan baris yang belum terhubung", () => {
+    const frameNoScrewName = { ...f, screwGroup: { ...screws, jointType: "Skrup lain" } };
+    const r = calculate(withParts({ hDividers: [1000] }), [frameNoScrewName], [h], settings, [], materials);
+    const bom = bomFromResult(r, { materials, frames: [frameNoScrewName], handles: [h], hingeTypes: [] });
+    const line = (name: string) => bom.lines.find((l) => l.name === name)!;
+    expect(line("Corner A507")).toMatchObject({ need: 4, buy: 20, subtotal: 20 * 175 });
+    expect(line("Skrup 8x1")).toMatchObject({ need: 16, buy: 20 });
+    expect(line("Profil frame").unit).toBe("batang");
+    expect(line("Skrup lain").materialId).toBeNull();
+    expect(bom.unlinked).toBe(1);
+    expect(bom.total).toBe(bom.lines.reduce((s, l) => s + l.subtotal, 0));
+  });
+
+  it("BOM bulk membulatkan setelah digabung, bukan per pintu", () => {
+    const bulk = calculateBulk([{ spec: withParts(), qty: 3, label: "" }], [f], [h], settings, [], materials);
+    const bom = bomFromBulk(bulk, { materials, frames: [f], handles: [h], hingeTypes: [] });
+    const corner = bom.lines.find((l) => l.materialId === 4)!;
+    expect(corner.need).toBe(12);
+    expect(corner.buy).toBe(20); // per pintu 3 × 20 = 60
+  });
+
+  it("riwayat lama tanpa field komponen tetap bisa dihitung", () => {
+    const r = calculate(door(), [frame], [handle], settings);
+    expect(r.components).toEqual([]);
+    expect(r.glass.panels[0].width).toBe(r.glass.panels[0].openingWidth);
   });
 });

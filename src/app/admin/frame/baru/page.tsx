@@ -1,7 +1,7 @@
 import { Suspense } from "react";
 import { PageHeader, Skeleton } from "@/components/admin-ui";
 import { requireUser } from "@/lib/auth";
-import { getSettings, listScrewGroups } from "@/lib/data";
+import { getSettings, listMaterialOptions, listScrewGroups } from "@/lib/data";
 import { FrameForm } from "../frame-form";
 
 export default function NewFramePage() {
@@ -17,11 +17,16 @@ export default function NewFramePage() {
 
 async function Content() {
   await requireUser("admin");
-  const [settings, screwGroups] = await Promise.all([getSettings(), listScrewGroups()]);
+  const [settings, screwGroups, materials] = await Promise.all([
+    getSettings(),
+    listScrewGroups(),
+    listMaterialOptions("profil"),
+  ]);
   return (
     <FrameForm
       defaultBarLength={settings.defaultBarLength}
       screwGroups={screwGroups}
+      materials={materials}
       initial={{
         id: null,
         name: "",
@@ -30,6 +35,7 @@ async function Content() {
         barLength: null,
         faceWidth: 40,
         screwGroupId: null,
+        materialId: null,
         active: true,
       }}
     />
